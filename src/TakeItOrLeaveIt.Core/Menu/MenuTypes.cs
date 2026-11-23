@@ -229,7 +229,7 @@ public sealed class PolicyPreviewView
 
     public bool ReflectsUnsavedChanges { get; }
 
-    public string Disclaimer => "Eligibility only - this does not check stock, and sales are not changed until Phases 03/04.";
+    public string Disclaimer => "Eligibility only - this does not check stock. Customer orders accepted from now on use these rules; dealers stay vanilla until Phase 04.";
 }
 
 /// <summary>Player-facing wording, kept in one place.</summary>
@@ -240,7 +240,7 @@ public static class MenuText
     public const string CatalogFailed = "Unable to load product catalog.";
     public const string Unsupported = "Product data is not available in this game version.";
     public const string EmptySelectionWarning = "No products selected. This category currently has no eligible products.";
-    public const string SalesNotice = "Sales integration is planned for Phases 03 and 04. These rules do not change sales yet.";
+    public const string SalesNotice = "Customer orders accepted from now on take any permitted product of their category. Dealers are unchanged until Phase 04.";
     public const string Saved = "Settings saved.";
 
     public static string ModeLabel(PolicyMode mode) => mode switch

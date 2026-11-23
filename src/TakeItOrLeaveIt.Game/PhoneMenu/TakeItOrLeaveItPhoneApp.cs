@@ -451,7 +451,7 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
         Line(c, MenuText.SalesNotice, Theme.TextFaint, Theme.SmallSize);
         if (!menu.IsModEnabled)
         {
-            Line(c, "The mod is OFF for this save: future sales integration will use vanilla behaviour.", Theme.Warning);
+            Line(c, "The mod is OFF for this save: new customer orders use vanilla rules. Orders already accepted keep their rules.", Theme.Warning);
         }
 
         if (menu.Availability != MenuAvailability.Ready)
@@ -497,8 +497,15 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
         var (discard, discardLabel) = UiKit.Button(row.transform, string.Empty, Theme.SurfaceRaised, 160f, 38f, () => menu.Discard(), 15, 110f);
         UiKit.SetButton(discard, discardLabel, "Discard changes", Theme.SurfaceRaised, menu.HasUnsavedChanges);
 
+        Heading(c, "Customer orders");
+        Line(c, "Mixed deliveries: allow one order to be filled with several permitted products of its category (for example 3 OG Kush + 2 Sour Diesel for 5 Weed). Applies to orders accepted after saving.", Theme.TextMuted, Theme.SmallSize);
+        var mixedRow = Row(c, 48f);
+        UiKit.Size(UiKit.Label(mixedRow.transform, "Mixed deliveries", Theme.BodySize, Theme.Text).gameObject, -1f, -1f, 1f, -1f, 0f);
+        var (mixed, mixedLabel) = UiKit.Button(mixedRow.transform, string.Empty, Theme.SurfaceRaised, 100f, 36f, () => menu.SetMixedDeliveries(!menu.MixedDeliveries), 15, 80f);
+        UiKit.SetButton(mixed, mixedLabel, menu.MixedDeliveries ? "ON" : "OFF", menu.MixedDeliveries ? Theme.Accent : Theme.DangerMuted, menu.CanEdit);
+
         Heading(c, "Reset");
-        Line(c, "Sets every category to Any Unlocked, clears all selections and turns the mod on. Press Save afterwards to keep it.", Theme.TextMuted, Theme.SmallSize);
+        Line(c, "Sets every category to Any Unlocked, clears all selections, turns mixed deliveries and the mod on. Press Save afterwards to keep it.", Theme.TextMuted, Theme.SmallSize);
         var resetRow = Row(c, 48f);
         if (menu.IsResetPending)
         {
@@ -512,7 +519,7 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
         }
 
         Heading(c, "Coming in later phases");
-        Line(c, "Customer and dealer sales rules (Phases 03/04) and quality/effect rules (Phase 05) are not configurable yet.", Theme.TextFaint, Theme.SmallSize);
+        Line(c, "Dealer sales rules (Phase 04) and quality/effect rules (Phase 05) are not configurable yet.", Theme.TextFaint, Theme.SmallSize);
     }
 
     private void RenderDiagnostics(Transform c)
@@ -536,7 +543,11 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
             }
         }
 
-        Line(c, "Sales integration: not active (Phases 03/04). No gameplay is changed.", Theme.TextFaint, Theme.SmallSize);
+        Heading(c, "Player sales");
+        foreach (var line in menu.SalesStatus?.Invoke() ?? new[] { "Player Sales: status unavailable" })
+        {
+            Line(c, line, Theme.TextMuted, Theme.SmallSize);
+        }
     }
 
     private void RenderProducts(ModMenuController menu)
