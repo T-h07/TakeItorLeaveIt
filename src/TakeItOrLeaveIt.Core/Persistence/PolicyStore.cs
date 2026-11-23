@@ -229,6 +229,7 @@ public static class PolicySettingsJson
             ["schemaVersion"] = settings.SchemaVersion,
             ["enabled"] = settings.Enabled,
             ["defaultMode"] = settings.DefaultMode,
+            ["mixedDeliveries"] = settings.MixedDeliveries,
             ["categories"] = categories,
         };
         return MiniJson.Write(root);
@@ -249,12 +250,18 @@ public static class PolicySettingsJson
                 : throw new InvalidDataException("schemaVersion must be a non-negative integer."),
             Enabled = !root.TryGetValue("enabled", out var e) || e is not bool enabled || enabled,
             DefaultMode = root.TryGetValue("defaultMode", out var dm) ? dm as string : null,
+            MixedDeliveries = !root.TryGetValue("mixedDeliveries", out var md) || md is not bool mixed || mixed,
             Categories = new Dictionary<string, CategoryPolicySettings>(StringComparer.Ordinal),
         };
 
         if (root.TryGetValue("enabled", out var rawEnabled) && rawEnabled is not null && rawEnabled is not bool)
         {
             throw new InvalidDataException("enabled must be true or false.");
+        }
+
+        if (root.TryGetValue("mixedDeliveries", out var rawMixed) && rawMixed is not null && rawMixed is not bool)
+        {
+            throw new InvalidDataException("mixedDeliveries must be true or false.");
         }
 
         if (root.TryGetValue("categories", out var cats) && cats is not null)

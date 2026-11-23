@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using MelonLoader;
 using MelonLoader.InternalUtils;
@@ -25,8 +26,10 @@ using TakeItOrLeaveIt.Game.Patching;
 namespace TakeItOrLeaveIt.Game;
 
 /// <summary>
-/// MelonLoader entry point. Phase 02: diagnostics, Harmony infrastructure (no patches), read-only
-/// product discovery and the mod menu (S1API phone app) with per-save settings. It does NOT change any gameplay (customers, dealers, products, inventory, money, XP, saves).
+/// MelonLoader entry point. Phase 03: diagnostics, read-only product discovery, the mod menu (S1API phone
+/// app) with per-save settings, and player sales: customer contracts accepted while the mod is on become
+/// category orders validated at handover (IL2CPP builds with local game references). Payment, XP, items and
+/// contract completion stay with the game; dealers, products and game saves are not changed.
 /// </summary>
 public sealed class TakeItOrLeaveItMod : MelonMod
 {
@@ -37,6 +40,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
     /// <summary>Saved policy of the active save; published by the menu controller after each successful save.</summary>
     private readonly InMemoryPolicyProvider _policies = new();
     private ModMenuController? _menu;
+    private PlayerSalesHost? _sales;
 
     /// <summary>Menu state for the in-game UI (null if initialization failed).</summary>
     internal static ModMenuController? Menu { get; private set; }
@@ -55,14 +59,9 @@ public sealed class TakeItOrLeaveItMod : MelonMod
             .Step("Report environment", LogEnvironment)
             .Step("Compatibility check", () => compatibility = CheckCompatibility())
             .Step("MelonLoader integration", () => _log.Info("MelonLoader integration initialized."))
-            .Step("Harmony infrastructure", () =>
-            {
-                // Phase 01 still registers no patch modules: discovery is read-only polling.
-                _patches = new PatchManager(HarmonyInstance, _log, Array.Empty<IPatchModule>());
-                _patches.ApplyAll();
-            })
             .Step("Product discovery (read-only)", () => _discovery = new ProductDiscoveryRuntime(_log, _policies))
             .Step("Mod menu settings", CreateMenu)
+            .Step("Player sales", CreatePlayerSales)
             .Run();
 
         IsOperational = outcome == StartupOutcome.Succeeded;
@@ -77,7 +76,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
                 }
 
                 _log.Info(ModInfo.InitializedMessage);
-                _log.Info("Phase 02: product discovery, mod menu and per-save settings. Sales are not changed yet (Phases 03/04).");
+                _log.Info($"Phase 03: player sales {(_sales?.Status.HooksActive == true ? "hooks active" : "unavailable in this build")}; dealers unchanged until Phase 04.");
                 break;
             case StartupOutcome.UnsupportedEnvironment:
                 _log.Error("Initialization stopped: unsupported environment. The mod is inactive; the game is unaffected.");
@@ -93,7 +92,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
         // One line per scene load (not per frame): confirms the mod survives into gameplay scenes.
         if (IsOperational)
         {
-            _log.Info($"Scene loaded: '{sceneName}' (index {buildIndex}). No gameplay changes in Phase 02.");
+            _log.Info($"Scene loaded: '{sceneName}' (index {buildIndex}).");
             _discovery?.PollNow();
         }
     }
@@ -104,6 +103,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
         if (IsOperational)
         {
             _discovery?.Tick();
+            TickSales();
             TickPhoneMenu();
         }
     }
@@ -153,9 +153,38 @@ public sealed class TakeItOrLeaveItMod : MelonMod
 #endif
     }
 
+    private bool _salesDisabled;
+
+    private void TickSales()
+    {
+        if (_sales is null || _salesDisabled)
+        {
+            return;
+        }
+
+        try
+        {
+            _sales.Tick();
+#if GAME_PATCHES
+            Sales.SalesSession.Tick(_discovery?.Catalog.State.IsReady == true);
+#endif
+        }
+        catch (Exception ex)
+        {
+            _salesDisabled = true;
+            _log.Error($"Player sales housekeeping stopped after an error (hooks stay as they are; restart the game to retry): {ex}");
+        }
+    }
+
     public override void OnDeinitializeMelon()
     {
         _patches?.RemoveAll();
+#if GAME_PATCHES
+        Sales.PlayerSalesPatches.MarkRemoved();
+        Sales.GameSales.Coordinator = null;
+#endif
+        _sales?.Shutdown();
+        _sales = null;
         _menu?.Dispose();
         _menu = null;
         Menu = null;
@@ -178,6 +207,44 @@ public sealed class TakeItOrLeaveItMod : MelonMod
         };
         Menu = _menu;
         _log.Info("Mod menu settings initialized (stored per save under UserData/TakeItOrLeaveIt/saves).");
+    }
+
+    private void CreatePlayerSales()
+    {
+        var root = Path.Combine(MelonEnvironment.UserDataDirectory, ModInfo.Name);
+        _sales = new PlayerSalesHost(_log, _policies, _discovery!.Catalog, root, () => _menu);
+        _menu!.SalesStatus = _sales.StatusLines;
+
+        var modules = new List<IPatchModule>();
+#if GAME_PATCHES
+        Sales.GameSales.Coordinator = _sales.Coordinator;
+        Sales.GameSales.Log = _log;
+        Sales.GameSales.CatalogGeneration = () => _discovery.Catalog.State.Snapshot?.Generation ?? -1;
+        Sales.SalesSession.Catalog = () => _discovery.Catalog.State.Snapshot;
+        modules.Add(new Sales.PlayerSalesPatches());
+#endif
+        _patches = new PatchManager(HarmonyInstance, _log, modules);
+        try
+        {
+            _patches.ApplyAll();
+        }
+        catch (Exception)
+        {
+            // PatchManager already removed every patch and logged the cause; the rest of the mod keeps working.
+#if GAME_PATCHES
+            Sales.GameSales.Coordinator = null;
+#endif
+            _sales.SetHooks(false, "a game method could not be patched (see the error above); vanilla sales rules apply");
+            return;
+        }
+
+#if GAME_PATCHES
+        _sales.SetHooks(Sales.PlayerSalesPatches.Applied, "not applied");
+#else
+        _sales.SetHooks(false, BuildTarget.Runtime == GameRuntime.Mono
+            ? "the Mono build has no game references; use the IL2CPP build"
+            : "built without local game references (see docs/BUILDING.md)");
+#endif
     }
 
     private void LogEnvironment()

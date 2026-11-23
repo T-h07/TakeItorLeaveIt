@@ -42,6 +42,7 @@ public sealed class ModMenuController : IDisposable
     private PolicyConfiguration _draft = PolicyConfiguration.Default;
     private string _savedFingerprint = Fingerprint(PolicyConfiguration.Default);
     private bool _settingsLoaded;
+    private bool _settingsUnreadable;
     private bool _disposed;
 
     private CategoryKey _category;
@@ -80,6 +81,9 @@ public sealed class ModMenuController : IDisposable
     /// <summary>Lines for the Diagnostics screen supplied by the game host (versions, runtime, warnings).</summary>
     public IReadOnlyList<string> HostDiagnostics { get; set; } = Array.Empty<string>();
 
+    /// <summary>Player-sales status lines for the Diagnostics screen, supplied by the host (Phase 03).</summary>
+    public Func<IReadOnlyList<string>>? SalesStatus { get; set; }
+
     public CatalogState CatalogState => _catalog.State;
 
     public MenuAvailability Availability => _catalog.State.Status switch
@@ -93,6 +97,13 @@ public sealed class ModMenuController : IDisposable
 
     /// <summary>Settings can be edited only for a loaded save with a ready catalog.</summary>
     public bool CanEdit => Availability == MenuAvailability.Ready && _settingsLoaded;
+
+    /// <summary>
+    /// Phase 03: the saved policy of the active save was read successfully (or the save has none yet, so the
+    /// documented defaults apply). False before loading and while the file is unreadable: new customer orders
+    /// then stay vanilla instead of silently using defaults.
+    /// </summary>
+    public bool PolicyReadyForSales => _settingsLoaded && !_settingsUnreadable;
 
     public string AvailabilityText => Availability switch
     {
@@ -277,6 +288,12 @@ public sealed class ModMenuController : IDisposable
     public bool SetModEnabled(bool enabled)
         => Edit(d => d.Enabled == enabled ? d : d.WithEnabled(enabled));
 
+    /// <summary>Phase 03: whether one order may be filled with several eligible products of its category.</summary>
+    public bool MixedDeliveries => _draft.MixedDeliveries;
+
+    public bool SetMixedDeliveries(bool allowed)
+        => Edit(d => d.MixedDeliveries == allowed ? d : d.WithMixedDeliveries(allowed));
+
     public bool SetMode(CategoryKey category, PolicyMode mode)
         => EditCategory(category, rule => rule.WithMode(mode));
 
@@ -365,6 +382,8 @@ public sealed class ModMenuController : IDisposable
             SetFeedback(FeedbackKind.Error, $"Settings were NOT saved: {ex.Message}");
             return false;
         }
+
+        _settingsUnreadable = false;
 
         ApplySaved(validated);
         _draft = _saved;
@@ -487,6 +506,7 @@ public sealed class ModMenuController : IDisposable
         _page = 0;
         IsResetPending = false;
         _settingsLoaded = false;
+        _settingsUnreadable = false;
 
         if (session.IsNone)
         {
@@ -516,6 +536,7 @@ public sealed class ModMenuController : IDisposable
                 _log?.Warning($"Menu settings for {session.SaveIdentity} are unreadable; defaults are shown and the file is kept. {result.Message}");
                 Feedback = new MenuFeedback(FeedbackKind.Warning, "Saved settings could not be read; defaults are shown. The file is kept until you save.");
                 loaded = PolicyConfiguration.Default;
+                _settingsUnreadable = true;
                 break;
             default:
                 loaded = PolicyConfiguration.Default;

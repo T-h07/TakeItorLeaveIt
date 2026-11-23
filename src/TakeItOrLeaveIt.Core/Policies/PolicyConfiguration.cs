@@ -14,14 +14,15 @@ public sealed class PolicyConfiguration
 {
     public const int CurrentSchemaVersion = 1;
 
-    public static readonly PolicyConfiguration Default = new(true, PolicyMode.AnyUnlocked, new Dictionary<CategoryKey, CategoryPolicy>(), 0);
+    public static readonly PolicyConfiguration Default = new(true, PolicyMode.AnyUnlocked, new Dictionary<CategoryKey, CategoryPolicy>(), 0, true);
 
     private readonly Dictionary<CategoryKey, CategoryPolicy> _categories;
     private readonly CategoryPolicy _defaultPolicy;
 
-    private PolicyConfiguration(bool enabled, PolicyMode defaultMode, Dictionary<CategoryKey, CategoryPolicy> categories, long revision)
+    private PolicyConfiguration(bool enabled, PolicyMode defaultMode, Dictionary<CategoryKey, CategoryPolicy> categories, long revision, bool mixedDeliveries)
     {
         Enabled = enabled;
+        MixedDeliveries = mixedDeliveries;
         DefaultMode = defaultMode;
         _categories = categories;
         _defaultPolicy = new CategoryPolicy(defaultMode, null);
@@ -33,6 +34,12 @@ public sealed class PolicyConfiguration
 
     public PolicyMode DefaultMode { get; }
 
+    /// <summary>
+    /// Phase 03: whether one customer order may be filled with several different eligible products of its
+    /// category (for example 6 OG Kush + 4 Sour Diesel for "10 Weed"). Default true.
+    /// </summary>
+    public bool MixedDeliveries { get; }
+
     public long Revision { get; }
 
     /// <summary>Explicit per-category rules, keyed by category.</summary>
@@ -43,10 +50,13 @@ public sealed class PolicyConfiguration
         => category.IsValid && _categories.TryGetValue(category, out var policy) ? policy : _defaultPolicy;
 
     public PolicyConfiguration WithEnabled(bool enabled)
-        => new(enabled, DefaultMode, _categories, Revision + 1);
+        => new(enabled, DefaultMode, _categories, Revision + 1, MixedDeliveries);
+
+    public PolicyConfiguration WithMixedDeliveries(bool allowed)
+        => new(Enabled, DefaultMode, _categories, Revision + 1, allowed);
 
     public PolicyConfiguration WithDefaultMode(PolicyMode mode)
-        => new(Enabled, new CategoryPolicy(mode, null).Mode, _categories, Revision + 1);
+        => new(Enabled, new CategoryPolicy(mode, null).Mode, _categories, Revision + 1, MixedDeliveries);
 
     public PolicyConfiguration WithCategory(CategoryKey category, CategoryPolicy policy)
     {
@@ -56,13 +66,13 @@ public sealed class PolicyConfiguration
         }
 
         var copy = new Dictionary<CategoryKey, CategoryPolicy>(_categories) { [category] = policy ?? throw new ArgumentNullException(nameof(policy)) };
-        return new PolicyConfiguration(Enabled, DefaultMode, copy, Revision + 1);
+        return new PolicyConfiguration(Enabled, DefaultMode, copy, Revision + 1, MixedDeliveries);
     }
 
     public PolicyConfiguration WithoutCategory(CategoryKey category)
     {
         var copy = new Dictionary<CategoryKey, CategoryPolicy>(_categories);
-        return copy.Remove(category) ? new PolicyConfiguration(Enabled, DefaultMode, copy, Revision + 1) : this;
+        return copy.Remove(category) ? new PolicyConfiguration(Enabled, DefaultMode, copy, Revision + 1, MixedDeliveries) : this;
     }
 
     /// <summary>
@@ -84,7 +94,7 @@ public sealed class PolicyConfiguration
         {
             found.Add(new ConfigurationIssue(ConfigurationIssueKind.UnsupportedSchemaVersion, null, settings.SchemaVersion.ToString(),
                 $"Settings schema {settings.SchemaVersion} is newer than supported ({CurrentSchemaVersion}); every category is disabled to stay safe."));
-            return new PolicyConfiguration(settings.Enabled, PolicyMode.Disabled, new Dictionary<CategoryKey, CategoryPolicy>(), 0);
+            return new PolicyConfiguration(settings.Enabled, PolicyMode.Disabled, new Dictionary<CategoryKey, CategoryPolicy>(), 0, settings.MixedDeliveries);
         }
 
         var defaultMode = PolicyMode.AnyUnlocked;
@@ -141,7 +151,7 @@ public sealed class PolicyConfiguration
             categories.Add(category, new CategoryPolicy(mode, selected));
         }
 
-        return new PolicyConfiguration(settings.Enabled, defaultMode, categories, 0);
+        return new PolicyConfiguration(settings.Enabled, defaultMode, categories, 0, settings.MixedDeliveries);
     }
 
     /// <summary>Plain, serializable form of this configuration.</summary>
@@ -150,6 +160,7 @@ public sealed class PolicyConfiguration
         SchemaVersion = CurrentSchemaVersion,
         Enabled = Enabled,
         DefaultMode = FormatMode(DefaultMode),
+        MixedDeliveries = MixedDeliveries,
         Categories = _categories
             .OrderBy(p => p.Key)
             .ToDictionary(
@@ -197,6 +208,9 @@ public sealed class PolicySettings
     public bool Enabled { get; set; } = true;
 
     public string? DefaultMode { get; set; }
+
+    /// <summary>Optional in the file (added in Phase 03); missing means true.</summary>
+    public bool MixedDeliveries { get; set; } = true;
 
     public Dictionary<string, CategoryPolicySettings>? Categories { get; set; }
 }
