@@ -85,10 +85,14 @@ if (-not $s1api) {
 $staging = Join-Path ([IO.Path]::GetTempPath()) ('tiol-refs-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $staging | Out-Null
 try {
-    Copy-Item $il2cpp (Join-Path $staging 'Il2CppAssemblies') -Recurse
-    Copy-Item $net6 (Join-Path $staging 'net6') -Recurse
-    $s1apiDir = New-Item -ItemType Directory -Path (Join-Path $staging 'S1API')
-    foreach ($f in $s1api) { Copy-Item $f.FullName (Join-Path $s1apiDir ($f.Directory.Name + '__' + $f.Name)) }
+    # Same layout as the game folder, which is what S1RefsDir in local.build.props expects.
+    $melon = New-Item -ItemType Directory -Path (Join-Path $staging 'MelonLoader')
+    Copy-Item $il2cpp (Join-Path $melon 'Il2CppAssemblies') -Recurse
+    Copy-Item $net6 (Join-Path $melon 'net6') -Recurse
+    foreach ($f in $s1api) {
+        $dest = New-Item -ItemType Directory -Force -Path (Join-Path $staging $f.Directory.Name)
+        Copy-Item $f.FullName $dest
+    }
 
     $log = Join-Path $GameDir 'MelonLoader\Latest.log'
     $manifest = @('# TakeItOrLeaveIt build references', "Exported: $(Get-Date -Format s)", '')
