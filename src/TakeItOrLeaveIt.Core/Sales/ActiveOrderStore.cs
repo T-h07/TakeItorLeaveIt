@@ -40,9 +40,16 @@ public sealed class ActiveOrderStore
     public const int SchemaVersion = 1;
 
     private readonly string _directory;
+    private readonly string _suffix;
     private readonly ISettingsFileSystem _fs;
 
     public ActiveOrderStore(string rootDirectory, ISettingsFileSystem? fileSystem = null)
+        : this(rootDirectory, fileSystem, ".orders.json")
+    {
+    }
+
+    /// <summary>Same storage rules under another file name (the dealer appointment file uses it).</summary>
+    internal ActiveOrderStore(string rootDirectory, ISettingsFileSystem? fileSystem, string fileSuffix)
     {
         if (string.IsNullOrWhiteSpace(rootDirectory))
         {
@@ -50,6 +57,7 @@ public sealed class ActiveOrderStore
         }
 
         _directory = Path.Combine(rootDirectory, "saves");
+        _suffix = fileSuffix;
         _fs = fileSystem ?? PhysicalSettingsFileSystem.Instance;
     }
 
@@ -61,7 +69,14 @@ public sealed class ActiveOrderStore
             throw new ArgumentException("Save identity must be a short file-safe token.", nameof(saveIdentity));
         }
 
-        return Path.Combine(_directory, saveIdentity + ".orders.json");
+        return Path.Combine(_directory, saveIdentity + _suffix);
+    }
+
+    /// <summary>The raw document, or null when there is none. Throws on I/O errors.</summary>
+    internal string? ReadText(string saveIdentity)
+    {
+        var path = PathFor(saveIdentity);
+        return _fs.FileExists(path) ? _fs.ReadAllText(path) : null;
     }
 
     public OrdersLoadResult Load(string saveIdentity)
@@ -119,17 +134,12 @@ public sealed class ActiveOrderStore
         var orders = transactions
             .Where(t => !t.IsTerminal)
             .OrderBy(t => t.Order.ContractId, StringComparer.Ordinal)
-            .Select(t => (object?)new Dictionary<string, object?>(StringComparer.Ordinal)
+            .Select(t =>
             {
-                ["contract"] = t.Order.ContractId,
-                ["category"] = t.Order.Category.Value,
-                ["requiredUnits"] = t.Order.RequiredUnits,
-                ["allowedProducts"] = t.Order.AllowedProducts.Select(p => (object?)p.Value).ToList(),
-                ["requestedProducts"] = t.Order.RequestedProducts.Select(p => (object?)p.Value).ToList(),
-                ["mixedDeliveries"] = t.Order.MixedDeliveries,
-                ["policyRevision"] = t.Order.PolicyRevision,
+                var body = WriteOrder(t.Order);
                 // Validated/Rejected describe transient handover-screen contents; only a commit survives a reload.
-                ["committed"] = t.State == SaleState.CommitObserved,
+                body["committed"] = t.State == SaleState.CommitObserved;
+                return (object?)body;
             })
             .ToList();
 
@@ -143,6 +153,38 @@ public sealed class ActiveOrderStore
     /// <summary>Throws <see cref="FormatException"/> / <see cref="InvalidDataException"/> when the text is not an order document.</summary>
     public static IReadOnlyList<(CategoryOrder Order, SaleState State)> FromJson(string json, ICollection<string> issues)
     {
+        var result = new List<(CategoryOrder, SaleState)>();
+        foreach (var body in Entries(json, "orders", SchemaVersion, issues))
+        {
+            var order = ReadOrder(body, issues);
+            if (order is not null)
+            {
+                var committed = body.TryGetValue("committed", out var k) && k is true;
+                result.Add((order, committed ? SaleState.CommitObserved : SaleState.Pending));
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>The snapshot fields shared by the player and dealer files.</summary>
+    internal static Dictionary<string, object?> WriteOrder(CategoryOrder order) => new(StringComparer.Ordinal)
+    {
+        ["contract"] = order.ContractId,
+        ["category"] = order.Category.Value,
+        ["requiredUnits"] = order.RequiredUnits,
+        ["allowedProducts"] = order.AllowedProducts.Select(p => (object?)p.Value).ToList(),
+        ["requestedProducts"] = order.RequestedProducts.Select(p => (object?)p.Value).ToList(),
+        ["mixedDeliveries"] = order.MixedDeliveries,
+        ["policyRevision"] = order.PolicyRevision,
+    };
+
+    /// <summary>
+    /// The entries of a versioned document that have a unique, valid contract id. Throws when the document itself
+    /// is not readable; a newer schema yields no entries (with an issue).
+    /// </summary>
+    internal static IReadOnlyList<Dictionary<string, object?>> Entries(string json, string listName, int supportedSchema, ICollection<string> issues)
+    {
         if (MiniJson.Parse(json) is not Dictionary<string, object?> root)
         {
             throw new InvalidDataException("Order file root must be a JSON object.");
@@ -153,15 +195,15 @@ public sealed class ActiveOrderStore
             throw new InvalidDataException("schemaVersion must be a positive integer.");
         }
 
-        if (version > SchemaVersion)
+        var result = new List<Dictionary<string, object?>>();
+        if (version > supportedSchema)
         {
-            issues.Add($"Order file schema {version} is newer than supported ({SchemaVersion}); active orders use vanilla rules.");
-            return Array.Empty<(CategoryOrder, SaleState)>();
+            issues.Add($"Order file schema {version} is newer than supported ({supportedSchema}); active orders use vanilla rules.");
+            return result;
         }
 
-        var result = new List<(CategoryOrder, SaleState)>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        if (!root.TryGetValue("orders", out var raw) || raw is not List<object?> entries)
+        if (!root.TryGetValue(listName, out var raw) || raw is not List<object?> entries)
         {
             return result;
         }
@@ -181,28 +223,33 @@ public sealed class ActiveOrderStore
                 continue;
             }
 
-            if (!CategoryKey.TryCreate(body.TryGetValue("category", out var cat) ? cat as string : null, out var category) ||
-                !body.TryGetValue("requiredUnits", out var u) || u is not double units || units < 1 || units > int.MaxValue || units != Math.Floor(units))
-            {
-                issues.Add($"Order {id} has an invalid category or quantity; ignored.");
-                continue;
-            }
-
-            var allowed = Keys(body, "allowedProducts");
-            if (allowed.Count == 0)
-            {
-                issues.Add($"Order {id} has no valid allowed products; ignored.");
-                continue;
-            }
-
-            var mixed = !body.TryGetValue("mixedDeliveries", out var m) || m is not bool mixedValue || mixedValue;
-            var revision = body.TryGetValue("policyRevision", out var r) && r is double rev && rev >= 0 && rev <= long.MaxValue ? (long)rev : 0;
-            var committed = body.TryGetValue("committed", out var k) && k is true;
-            result.Add((new CategoryOrder(id!, category, (int)units, allowed, mixed, revision, Keys(body, "requestedProducts")),
-                committed ? SaleState.CommitObserved : SaleState.Pending));
+            result.Add(body);
         }
 
         return result;
+    }
+
+    /// <summary>Reads the snapshot fields of an entry from <see cref="Entries"/>; null (with an issue) when any is invalid.</summary>
+    internal static CategoryOrder? ReadOrder(Dictionary<string, object?> body, ICollection<string> issues)
+    {
+        var id = (string)body["contract"]!;
+        if (!CategoryKey.TryCreate(body.TryGetValue("category", out var cat) ? cat as string : null, out var category) ||
+            !body.TryGetValue("requiredUnits", out var u) || u is not double units || units < 1 || units > int.MaxValue || units != Math.Floor(units))
+        {
+            issues.Add($"Order {id} has an invalid category or quantity; ignored.");
+            return null;
+        }
+
+        var allowed = Keys(body, "allowedProducts");
+        if (allowed.Count == 0)
+        {
+            issues.Add($"Order {id} has no valid allowed products; ignored.");
+            return null;
+        }
+
+        var mixed = !body.TryGetValue("mixedDeliveries", out var m) || m is not bool mixedValue || mixedValue;
+        var revision = body.TryGetValue("policyRevision", out var r) && r is double rev && rev >= 0 && rev <= long.MaxValue ? (long)rev : 0;
+        return new CategoryOrder(id, category, (int)units, allowed, mixed, revision, Keys(body, "requestedProducts"));
     }
 
     private static List<ProductKey> Keys(Dictionary<string, object?> body, string name)

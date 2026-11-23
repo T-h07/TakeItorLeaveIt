@@ -80,15 +80,27 @@ public sealed class OrderCreation
 public static class CategoryOrderFactory
 {
     public static OrderCreation Create(OrderRequest? request, PolicyConfiguration? policy, ProductCatalogSnapshot? catalog)
+        => Build(request, policy, catalog, forDealer: false);
+
+    /// <summary>
+    /// The same snapshot for a contract a hired dealer will fulfil (Phase 04). Identical rules: one category,
+    /// the live policy's eligible products, the mixed-deliveries setting. Player contracts are refused here.
+    /// </summary>
+    public static OrderCreation CreateForDealer(OrderRequest? request, PolicyConfiguration? policy, ProductCatalogSnapshot? catalog)
+        => Build(request, policy, catalog, forDealer: true);
+
+    private static OrderCreation Build(OrderRequest? request, PolicyConfiguration? policy, ProductCatalogSnapshot? catalog, bool forDealer)
     {
         if (request is null || !CategoryOrder.IsValidContractId(request.ContractId))
         {
             return Vanilla(OrderOutcome.InvalidContract, "Contract has no usable id.");
         }
 
-        if (!request.IsPlayerContract)
+        if (request.IsPlayerContract == forDealer)
         {
-            return Vanilla(OrderOutcome.NotPlayerContract, "Dealer contract: vanilla rules.");
+            return forDealer
+                ? Vanilla(OrderOutcome.InvalidContract, "Player contract: not a dealer order.")
+                : Vanilla(OrderOutcome.NotPlayerContract, "Dealer contract: handled by dealer sales.");
         }
 
         if (policy is null || !policy.Enabled)

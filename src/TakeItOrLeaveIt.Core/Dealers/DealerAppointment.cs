@@ -1,0 +1,100 @@
+using TakeItOrLeaveIt.Core.Sales;
+
+namespace TakeItOrLeaveIt.Core.Dealers;
+
+/// <summary>Lifecycle of a managed dealer appointment. Terminal states are final.</summary>
+public enum AppointmentState
+{
+    /// <summary>Accepted; the dealer does not have enough eligible, unreserved stock yet.</summary>
+    WaitingForEligibleStock,
+
+    /// <summary>Stock is reserved for this appointment.</summary>
+    Reserved,
+
+    /// <summary>The planned units were removed by the game and handed to the customer's evaluation.</summary>
+    Committing,
+
+    /// <summary>The game processed the handover (payment, cut, XP are vanilla's). Observed exactly once.</summary>
+    CommitObserved,
+
+    Completed,
+    Failed,
+    Canceled,
+    Expired,
+
+    /// <summary>No longer managed: the game's own exact-product rules handle the rest of this contract.</summary>
+    ReturnedToVanilla,
+}
+
+/// <summary>Mutable state of one managed dealer appointment. Only <see cref="DealerSaleCoordinator"/> changes it.</summary>
+public sealed class DealerAppointment
+{
+    internal DealerAppointment(CategoryOrder order, string dealerId, long sequence, AppointmentState state)
+    {
+        Order = order;
+        DealerId = dealerId;
+        Sequence = sequence;
+        State = state;
+    }
+
+    public CategoryOrder Order { get; }
+
+    public string ContractId => Order.ContractId;
+
+    /// <summary>The hired dealer that fulfils it (owner of the reserved stock).</summary>
+    public string DealerId { get; }
+
+    /// <summary>Acceptance order; earlier appointments get stock first when several wait.</summary>
+    public long Sequence { get; }
+
+    public AppointmentState State { get; private set; }
+
+    /// <summary>How often its reservation was invalidated because the stock disappeared.</summary>
+    public int Invalidations { get; internal set; }
+
+    public int CommitCount { get; internal set; }
+
+    /// <summary>Units the game's removal returned for this appointment (diagnostics).</summary>
+    public long RemovedUnits { get; internal set; }
+
+    public string? LastIssue { get; internal set; }
+
+    public bool IsTerminal => IsTerminalState(State);
+
+    public static bool IsTerminalState(AppointmentState state)
+        => state is AppointmentState.Completed or AppointmentState.Failed or AppointmentState.Canceled
+            or AppointmentState.Expired or AppointmentState.ReturnedToVanilla;
+
+    /// <summary>Allowed transitions; anything else is refused and leaves the state unchanged.</summary>
+    public static bool CanTransition(AppointmentState from, AppointmentState to)
+    {
+        if (IsTerminalState(from))
+        {
+            return false;
+        }
+
+        return to switch
+        {
+            AppointmentState.WaitingForEligibleStock => from is AppointmentState.Reserved,
+            AppointmentState.Reserved => from is AppointmentState.WaitingForEligibleStock,
+            AppointmentState.Committing => from is AppointmentState.Reserved,
+            AppointmentState.CommitObserved => from is AppointmentState.Committing or AppointmentState.Reserved or AppointmentState.WaitingForEligibleStock,
+            // From Committing only when nothing was removed yet (the removal failed before it started).
+            AppointmentState.ReturnedToVanilla => from is AppointmentState.WaitingForEligibleStock or AppointmentState.Reserved or AppointmentState.Committing,
+            _ => true, // any non-terminal state may end with the contract
+        };
+    }
+
+    internal bool TryMove(AppointmentState to)
+    {
+        if (!CanTransition(State, to))
+        {
+            return false;
+        }
+
+        State = to;
+        return true;
+    }
+
+    public override string ToString() => $"{ContractId}@{DealerId} [{State}]";
+}
