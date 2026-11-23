@@ -1,0 +1,19 @@
+<!--
+  Copy this file to `local.build.props` (git-ignored) and adjust it for your machine.
+  It is optional: the solution builds without it. It only enables automatic deployment
+  of the freshly built mod into a local Schedule I installation.
+-->
+<Project>
+  <PropertyGroup>
+    <!-- Folder that contains "Schedule I.exe". Example for a default Steam library:
+         C:\Program Files (x86)\Steam\steamapps\common\Schedule I -->
+    <ScheduleOneGameDir></ScheduleOneGameDir>
+
+    <!-- Which build to deploy: Il2Cpp (default Steam branch) or Mono ("alternate" beta branch).
+         Use the inspector / probe script to confirm which one you have (docs/ENVIRONMENT.md). -->
+    <ScheduleOneRuntime>Il2Cpp</ScheduleOneRuntime>
+
+    <!-- true = copy the build output into <ScheduleOneGameDir>\Mods and \UserLibs after each build. -->
+    <DeployToGame>false</DeployToGame>
+  </PropertyGroup>
+</Project>

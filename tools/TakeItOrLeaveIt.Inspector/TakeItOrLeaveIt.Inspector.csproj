@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Read-only research tool. Reads Schedule I assembly METADATA (System.Reflection.Metadata) without
+    loading or executing any game code, and writes a report used to verify docs/PATCH_MAP.md.
+    It never modifies the game installation. Output goes to ./inspection-output (git-ignored).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <!-- Run on whatever newer .NET runtime is installed. -->
+    <RollForward>Major</RollForward>
+    <RootNamespace>TakeItOrLeaveIt.Inspector</RootNamespace>
+    <AssemblyName>TakeItOrLeaveIt.Inspector</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TakeItOrLeaveIt.Core\TakeItOrLeaveIt.Core.csproj" />
+  </ItemGroup>
+
+</Project>

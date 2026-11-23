@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Game-independent logic. No Unity, MelonLoader, Harmony or Schedule I references allowed here.
+    netstandard2.0 so the same assembly can be consumed by both mod builds:
+      - net6.0  (MelonLoader IL2CPP runtime)
+      - net472  (MelonLoader Mono runtime)
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>TakeItOrLeaveIt.Core</RootNamespace>
+    <AssemblyName>TakeItOrLeaveIt.Core</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TakeItOrLeaveIt.Core.Tests" />
+  </ItemGroup>
+
+</Project>

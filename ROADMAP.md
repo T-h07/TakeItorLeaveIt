@@ -1,7 +1,7 @@
 # Take It Or Leave It — Development Roadmap
 
 > **Project:** Schedule I sales-overhaul mod  
-> **Status:** Planning — no playable build yet  
+> **Status:** Phase 00 implementation complete, in-game acceptance pending. No playable features yet  
 > **Target release:** v1.0.0  
 > **Development branch:** `develop`  
 > **Goal:** Make selling simpler while giving the player precise control over **what can be sold**.

@@ -1,0 +1,65 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    MelonLoader entry point and (future) Harmony integration with Schedule I.
+
+    Two builds are produced from the same source, one per Unity scripting backend:
+      net6.0  -> TakeItOrLeaveIt.Il2Cpp.dll  (default Steam branch, MelonLoader IL2CPP / .NET 6 runtime)
+      net472  -> TakeItOrLeaveIt.Mono.dll    ("alternate" Steam beta branch, MelonLoader Mono runtime)
+
+    Phase 00 references ONLY the redistributable LavaGang.MelonLoader NuGet package, so this project
+    builds in CI without any proprietary game assemblies. Future phases that need game types will add
+    references to the locally generated/installed game assemblies via local.build.props (never committed).
+  -->
+  <PropertyGroup>
+    <TargetFrameworks>net6.0;net472</TargetFrameworks>
+    <RootNamespace>TakeItOrLeaveIt.Game</RootNamespace>
+    <!-- NU1603: MelonLoader 0.7.3's nuspec pins Il2CppInterop 1.5.1-ci.845, which is not on nuget.org;
+         NuGet resolves 1.5.1 instead. We only need MelonLoader/HarmonyX at compile time, so this is benign.
+         NU1701: MelonLoader's net6.0 dependency group pulls in Microsoft.Bcl (a .NET Framework package);
+         it is never shipped with our mod (the installed loader provides its own runtime). -->
+    <NoWarn>$(NoWarn);NU1603;NU1701</NoWarn>
+    <!-- MelonLoader 0.7.3's transitive Microsoft.Extensions.* 10.x packages warn that net6.0 is untested.
+         They are compile-time references only; the game uses the copies shipped with the installed loader. -->
+    <SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net6.0'">
+    <AssemblyName>TakeItOrLeaveIt.Il2Cpp</AssemblyName>
+    <DefineConstants>$(DefineConstants);IL2CPP_BUILD</DefineConstants>
+    <ModRuntime>Il2Cpp</ModRuntime>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net472'">
+    <AssemblyName>TakeItOrLeaveIt.Mono</AssemblyName>
+    <DefineConstants>$(DefineConstants);MONO_BUILD</DefineConstants>
+    <ModRuntime>Mono</ModRuntime>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Compile-time only: MelonLoader (and its HarmonyX dependency) are provided by the installed loader. -->
+    <PackageReference Include="LavaGang.MelonLoader" Version="0.7.3" PrivateAssets="all" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TakeItOrLeaveIt.Core\TakeItOrLeaveIt.Core.csproj" />
+  </ItemGroup>
+
+  <!--
+    Optional local deployment (DeployToGame=true in local.build.props).
+    Copies only our own files: the mod DLL into <game>\Mods and the Core library into <game>\UserLibs.
+    Nothing in the game installation is deleted or overwritten except previous copies of these files.
+  -->
+  <Target Name="DeployToScheduleOne" AfterTargets="Build"
+          Condition="'$(DeployToGame)' == 'true' And '$(ScheduleOneGameDir)' != '' And '$(ModRuntime)' == '$(ScheduleOneRuntime)'">
+    <Error Condition="!Exists('$(ScheduleOneGameDir)\Schedule I.exe')"
+           Text="ScheduleOneGameDir '$(ScheduleOneGameDir)' does not contain 'Schedule I.exe'. Fix local.build.props." />
+    <Error Condition="!Exists('$(ScheduleOneGameDir)\MelonLoader')"
+           Text="MelonLoader is not installed in '$(ScheduleOneGameDir)'. Install it first (docs/INSTALLATION.md)." />
+    <MakeDir Directories="$(ScheduleOneGameDir)\Mods;$(ScheduleOneGameDir)\UserLibs" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ScheduleOneGameDir)\Mods" />
+    <Copy SourceFiles="$(OutDir)TakeItOrLeaveIt.Core.dll" DestinationFolder="$(ScheduleOneGameDir)\UserLibs" />
+    <Message Importance="high" Text="Deployed $(TargetFileName) ($(ModRuntime)) to $(ScheduleOneGameDir)" />
+  </Target>
+
+</Project>
