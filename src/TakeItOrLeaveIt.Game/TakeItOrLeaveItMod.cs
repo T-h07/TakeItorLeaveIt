@@ -26,10 +26,11 @@ using TakeItOrLeaveIt.Game.Patching;
 namespace TakeItOrLeaveIt.Game;
 
 /// <summary>
-/// MelonLoader entry point. Phase 03: diagnostics, read-only product discovery, the mod menu (S1API phone
+/// MelonLoader entry point. Phase 04: diagnostics, read-only product discovery, the mod menu (S1API phone
 /// app) with per-save settings, and player sales: customer contracts accepted while the mod is on become
 /// category orders validated at handover (IL2CPP builds with local game references). Payment, XP, items and
-/// contract completion stay with the game; dealers, products and game saves are not changed.
+/// contract completion stay with the game. Hired dealers fulfil the same category orders from reserved stock
+/// (Phase 04); products and game saves are not changed.
 /// </summary>
 public sealed class TakeItOrLeaveItMod : MelonMod
 {
@@ -76,7 +77,8 @@ public sealed class TakeItOrLeaveItMod : MelonMod
                 }
 
                 _log.Info(ModInfo.InitializedMessage);
-                _log.Info($"Phase 03: player sales {(_sales?.Status.HooksActive == true ? "hooks active" : "unavailable in this build")}; dealers unchanged until Phase 04.");
+                _log.Info($"Phase 04: player sales {(_sales?.Status.HooksActive == true ? "hooks active" : "unavailable in this build")}; " +
+                          $"dealer sales {(_sales?.DealerStatus.HooksActive == true ? "hooks active" : "unavailable in this build")}.");
                 break;
             case StartupOutcome.UnsupportedEnvironment:
                 _log.Error("Initialization stopped: unsupported environment. The mod is inactive; the game is unaffected.");
@@ -181,7 +183,10 @@ public sealed class TakeItOrLeaveItMod : MelonMod
         _patches?.RemoveAll();
 #if GAME_PATCHES
         Sales.PlayerSalesPatches.MarkRemoved();
+        Sales.DealerSalesPatches.MarkRemoved();
         Sales.GameSales.Coordinator = null;
+        Sales.GameDealers.Coordinator = null;
+        Sales.GameDealers.Reset();
 #endif
         _sales?.Shutdown();
         _sales = null;
@@ -221,7 +226,9 @@ public sealed class TakeItOrLeaveItMod : MelonMod
         Sales.GameSales.Log = _log;
         Sales.GameSales.CatalogGeneration = () => _discovery.Catalog.State.Snapshot?.Generation ?? -1;
         Sales.SalesSession.Catalog = () => _discovery.Catalog.State.Snapshot;
+        Sales.GameDealers.Coordinator = _sales.Dealers;
         modules.Add(new Sales.PlayerSalesPatches());
+        modules.Add(new Sales.DealerSalesPatches());
 #endif
         _patches = new PatchManager(HarmonyInstance, _log, modules);
         try
@@ -233,15 +240,16 @@ public sealed class TakeItOrLeaveItMod : MelonMod
             // PatchManager already removed every patch and logged the cause; the rest of the mod keeps working.
 #if GAME_PATCHES
             Sales.GameSales.Coordinator = null;
+            Sales.GameDealers.Coordinator = null;
 #endif
-            _sales.SetHooks(false, "a game method could not be patched (see the error above); vanilla sales rules apply");
+            _sales.SetHooks(false, false, "a game method could not be patched (see the error above); vanilla sales rules apply");
             return;
         }
 
 #if GAME_PATCHES
-        _sales.SetHooks(Sales.PlayerSalesPatches.Applied, "not applied");
+        _sales.SetHooks(Sales.PlayerSalesPatches.Applied, Sales.DealerSalesPatches.Applied, "not applied");
 #else
-        _sales.SetHooks(false, BuildTarget.Runtime == GameRuntime.Mono
+        _sales.SetHooks(false, false, BuildTarget.Runtime == GameRuntime.Mono
             ? "the Mono build has no game references; use the IL2CPP build"
             : "built without local game references (see docs/BUILDING.md)");
 #endif

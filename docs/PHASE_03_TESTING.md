@@ -14,7 +14,7 @@
    ```
 
    The build output must contain both lines
-   `TakeItOrLeaveIt: building WITH the S1API phone app` and `TakeItOrLeaveIt: building WITH the player-sales game hooks`.
+   `TakeItOrLeaveIt: building WITH the S1API phone app` and `TakeItOrLeaveIt: building WITH the player and dealer sales game hooks`.
    Copy `artifacts/package/Il2Cpp/Mods/TakeItOrLeaveIt.Il2Cpp.dll` to `<Schedule I>/Mods/` and
    `artifacts/package/Il2Cpp/UserLibs/TakeItOrLeaveIt.Core.dll` to `<Schedule I>/UserLibs/` (replace both).
 3. Launch, load the backup copy of the save, and check `MelonLoader/Latest.log`:

@@ -434,6 +434,19 @@ public sealed class DealerSaleCoordinator
         }
     }
 
+    /// <summary>Stops managing an appointment before anything was removed; the game's own rules handle the contract.</summary>
+    public bool ReturnToVanilla(string? contractId, string reason)
+    {
+        if (contractId is null || !_appointments.TryGetValue(contractId, out var appointment) ||
+            !DealerAppointment.CanTransition(appointment.State, AppointmentState.ReturnedToVanilla))
+        {
+            return false;
+        }
+
+        ReturnToVanilla(appointment, reason);
+        return true;
+    }
+
     /// <summary>The game processed the dealer's handover (payment, cut, XP): recorded once.</summary>
     public CommitObservation OnHandoverProcessed(string? contractId)
     {

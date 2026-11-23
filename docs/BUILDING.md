@@ -71,7 +71,7 @@ builds and tests, but the mod has no menu and logs that.
    `Mods\S1API.Il2Cpp.MelonLoader.dll` and `MelonLoader\Il2CppAssemblies\*.dll` (the script writes that layout).
 3. In `local.build.props` set `<S1RefsDir>` to that folder (see `local.build.props.example`).
 4. Build. The output must show `TakeItOrLeaveIt: building WITH the S1API phone app` and
-   `TakeItOrLeaveIt: building WITH the player-sales game hooks`.
+   `TakeItOrLeaveIt: building WITH the player and dealer sales game hooks`.
 
 Verified with: Schedule I v0.4.7f12 IL2CPP, S1API 3.2.3.0 (`S1API.Il2Cpp.MelonLoader.dll`, built against
 MelonLoader 0.7.3 / Il2CppInterop 1.5.1, the same versions as our NuGet references), MelonLoader 0.7.4 runtime folder.

@@ -34,6 +34,7 @@ internal static class SalesSession
         var isServer = Il2CppFishNet.InstanceFinder.IsServer;
         var players = Player.PlayerList?.Count ?? -1;
         coordinator.SetAuthority(isServer, players < 0 ? 0 : players);
+        GameDealers.Coordinator?.SetAuthority(isServer, players < 0 ? 0 : players);
     }
 
     /// <summary>Called from OnUpdate. Cheap unless a timer elapsed.</summary>
@@ -85,7 +86,8 @@ internal static class SalesSession
 
     private static void Prune(PlayerSaleCoordinator coordinator)
     {
-        if (coordinator.Book.Count == 0)
+        var dealers = GameDealers.Coordinator;
+        if (coordinator.Book.Count == 0 && (dealers is null || dealers.ActiveAppointments == 0))
         {
             return;
         }
@@ -106,6 +108,13 @@ internal static class SalesSession
         if (removed > 0)
         {
             GameSales.Log?.Info($"Removed {removed} category order(s) whose contracts no longer exist.");
+            GameSales.InvalidateCache();
+        }
+
+        var removedAppointments = dealers?.Prune(live) ?? 0;
+        if (removedAppointments > 0)
+        {
+            GameSales.Log?.Info($"Removed {removedAppointments} dealer appointment(s) whose contracts no longer exist; their reservations were released.");
             GameSales.InvalidateCache();
         }
     }
