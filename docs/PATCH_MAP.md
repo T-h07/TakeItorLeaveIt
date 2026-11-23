@@ -81,6 +81,11 @@ acceptance, payment...), which is how the **UNVERIFIED** rows get filled in.
 | PRD-09 | Assembly-CSharp? | `ScheduleOne.Product.ProductItemInstance` | `Quality` (via quality item base) | An owned stack of product (inventory) | — | E1 | Read-only; **owning ≠ discovered** | Low | Both* | probable | 03, 04 |
 | PRD-10 | — | UNVERIFIED | Stable unique product ID property on `ItemDefinition` (`ID`?) | Identity for allowlists | — | (S1API uses IDs, exact member not traced) | — | — | UNVERIFIED | unresolved | 01 |
 
+> **Phase 01 usage (not new verification):** the read-only adapter in `src/TakeItOrLeaveIt.Game/Discovery/`
+> reads PRD-01 (`DiscoveredProducts`), PRD-06 (`DrugType`, `Properties[].ID`), PRD-10 (`ID`, `Name`) and LIF-04 by
+> reflection. These rows stay **probable/unresolved** until the Phase 01 in-game test
+> ([PHASE_01_TESTING.md](PHASE_01_TESTING.md)) logs real data from v0.4.7f12 IL2CPP.
+
 ### Answer: how can the mod tell whether a product is unlocked in the active save?
 
 - **Proposed primary source:** `ProductManager.DiscoveredProducts` (PRD-01). Category gates are
@@ -123,6 +128,7 @@ only as a secondary check and for "base strain" grouping. **Never** match on dis
 | ECO-01 | Assembly-CSharp? | `ScheduleOne.Money.MoneyManager` | `static Instance`; `ChangeCashBalance(float, bool, bool)`; field `cashBalance`; `GetNetWorth()`; `onNetworthCalculation`; online balance SyncVar (`sync___get_value_onlineBalance`) | Player cash / bank (networked) | Called by sale completion (UNVERIFIED) | E1, E4 | **Observe only** (count calls per sale → exactly-once test) | High | Both* | probable | 03 (observe) |
 | ECO-02 | Assembly-CSharp? | `ScheduleOne.Levelling.LevelManager` | `AddXP(int)`; rank-change event | XP / progression | Called on sale (UNVERIFIED) | E1 | Observe only | High | Both* | probable | 03 (observe) |
 | LIF-01 | Assembly-CSharp? | `ScheduleOne.Persistence.LoadManager` | `onLoadComplete`, `onPreLoad`, `onSaveInfoLoaded` (UnityEvents); `StartGame`, `LoadAsClient`, `ExitToMenu`, `QueueLoadRequest` | Save-load lifecycle | — | E1, E2 | `AddListener` (no patch) to refresh unlocks | Low | Both* | probable | 01, 06 |
+| LIF-04 | Assembly-CSharp? | `LoadManager` | `static Instance` (singleton); `bool IsGameLoaded`, `bool IsLoading`, `string LoadedGameFolderPath` | Is a save loaded, and which one | Polled ~1/s by the Phase 01 adapter (reflection, read-only) | E1 | No patch (read-only polling) | Low | Both* | probable | 01 |
 | LIF-02 | Assembly-CSharp? | `LoadManager` | `onPreSceneChange` | Leaving a save | — | E1 | `AddListener`; clear per-save state | Low | Both* | probable | 06 |
 | LIF-03 | Assembly-CSharp? | `ScheduleOne.Persistence.SaveManager` | `Save(string)` | Game save | — | E2 | Postfix to save per-save mod profile (separate file) | Medium | Both* | probable | 06 |
 

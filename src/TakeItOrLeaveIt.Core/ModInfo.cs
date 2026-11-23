@@ -19,7 +19,7 @@ public static class ModInfo
     public const string Version = "0.0.1-dev";
 
     /// <summary>Current development phase, reported in diagnostics.</summary>
-    public const string Phase = "00 - Foundation";
+    public const string Phase = "01 - Product discovery and rule engine";
 
     /// <summary>Message logged once initialization completes successfully.</summary>
     public static string InitializedMessage => $"Version {Version} initialized successfully.";
