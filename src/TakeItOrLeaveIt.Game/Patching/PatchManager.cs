@@ -30,7 +30,7 @@ internal sealed class PatchManager
     {
         if (_modules.Count == 0)
         {
-            _log.Info("No gameplay patches enabled (sales are not changed until Phases 03/04).");
+            _log.Info("No gameplay patches in this build (the player-sales hooks need local game references; see docs/BUILDING.md).");
             Applied = true;
             return;
         }

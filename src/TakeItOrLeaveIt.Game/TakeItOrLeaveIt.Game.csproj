@@ -8,8 +8,8 @@
       net472  -> TakeItOrLeaveIt.Mono.dll    ("alternate" Steam beta branch, MelonLoader Mono runtime)
 
     Phase 00 references ONLY the redistributable LavaGang.MelonLoader NuGet package, so this project
-    builds in CI without any proprietary game assemblies. Future phases that need game types will add
-    references to the locally generated/installed game assemblies via local.build.props (never committed).
+    builds in CI without any proprietary game assemblies. Game types (Phases 02/03) come from locally exported
+    reference assemblies set in local.build.props (never committed); see the conditional groups below.
   -->
   <PropertyGroup>
     <TargetFrameworks>net6.0;net472</TargetFrameworks>
@@ -46,21 +46,36 @@
   </ItemGroup>
 
   <!--
-    Phase 02 phone app (S1API). Compiled only for the IL2CPP build and only when S1RefsDir points to
-    reference assemblies exported from a real game install (tools/Export-BuildReferences.ps1), set in
-    the git-ignored local.build.props. These references are compile-time only (Private=false): nothing
-    from the game or S1API is copied into our output. Without them (e.g. in CI) the mod builds without
-    the phone app and logs that the menu is unavailable.
+    Local game references (never committed): S1RefsDir in the git-ignored local.build.props points to
+    assemblies exported from a real game install by tools/Export-BuildReferences.ps1. They are compile-time
+    only (Private=false): nothing from the game or S1API is copied into our output. Without them (e.g. in CI)
+    the mod builds without the game integrations and says so in its log and status report.
+
+    GAME_PATCHES (Phase 03): Harmony hooks into the game's customer-contract code (Assembly-CSharp interop).
+    PHONE_APP (Phase 02): the S1API phone app; needs S1API in addition.
+    Both exist only in the IL2CPP build: no Mono references are exported.
   -->
-  <PropertyGroup Condition="'$(TargetFramework)' == 'net6.0' And '$(S1RefsDir)' != '' And Exists('$(S1RefsDir)\Mods\S1API.Il2Cpp.MelonLoader.dll')">
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net6.0' And '$(S1RefsDir)' != '' And Exists('$(S1RefsDir)\MelonLoader\Il2CppAssemblies\Assembly-CSharp.dll')">
+    <GamePatchesEnabled>true</GamePatchesEnabled>
+    <DefineConstants>$(DefineConstants);GAME_PATCHES</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(GamePatchesEnabled)' == 'true' And Exists('$(S1RefsDir)\Mods\S1API.Il2Cpp.MelonLoader.dll')">
     <PhoneAppEnabled>true</PhoneAppEnabled>
     <DefineConstants>$(DefineConstants);PHONE_APP</DefineConstants>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(PhoneAppEnabled)' == 'true'">
-    <Reference Include="S1API" HintPath="$(S1RefsDir)\Mods\S1API.Il2Cpp.MelonLoader.dll" Private="false" />
+  <ItemGroup Condition="'$(GamePatchesEnabled)' == 'true'">
     <Reference Include="Il2Cppmscorlib" HintPath="$(S1RefsDir)\MelonLoader\Il2CppAssemblies\Il2Cppmscorlib.dll" Private="false" />
     <Reference Include="UnityEngine.CoreModule" HintPath="$(S1RefsDir)\MelonLoader\Il2CppAssemblies\UnityEngine.CoreModule.dll" Private="false" />
+    <Reference Include="Assembly-CSharp" HintPath="$(S1RefsDir)\MelonLoader\Il2CppAssemblies\Assembly-CSharp.dll" Private="false" />
+    <Reference Include="Il2CppScheduleOne.Core" HintPath="$(S1RefsDir)\MelonLoader\Il2CppAssemblies\Il2CppScheduleOne.Core.dll" Private="false" />
+    <Reference Include="Il2CppFishNet.Runtime" HintPath="$(S1RefsDir)\MelonLoader\Il2CppAssemblies\Il2CppFishNet.Runtime.dll" Private="false" />
+    <Reference Include="Unity.TextMeshPro" HintPath="$(S1RefsDir)\MelonLoader\Il2CppAssemblies\Unity.TextMeshPro.dll" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(PhoneAppEnabled)' == 'true'">
+    <Reference Include="S1API" HintPath="$(S1RefsDir)\Mods\S1API.Il2Cpp.MelonLoader.dll" Private="false" />
     <Reference Include="UnityEngine.UI" HintPath="$(S1RefsDir)\MelonLoader\Il2CppAssemblies\UnityEngine.UI.dll" Private="false" />
     <Reference Include="UnityEngine.UIModule" HintPath="$(S1RefsDir)\MelonLoader\Il2CppAssemblies\UnityEngine.UIModule.dll" Private="false" />
     <Reference Include="UnityEngine.TextRenderingModule" HintPath="$(S1RefsDir)\MelonLoader\Il2CppAssemblies\UnityEngine.TextRenderingModule.dll" Private="false" />
@@ -72,9 +87,15 @@
     <Compile Remove="PhoneMenu\**" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(GamePatchesEnabled)' != 'true'">
+    <Compile Remove="Sales\**" />
+  </ItemGroup>
+
   <Target Name="ReportPhoneApp" BeforeTargets="CoreCompile" Condition="'$(TargetFramework)' == 'net6.0'">
     <Message Importance="high" Condition="'$(PhoneAppEnabled)' == 'true'" Text="TakeItOrLeaveIt: building WITH the S1API phone app (references: $(S1RefsDir))." />
     <Message Importance="high" Condition="'$(PhoneAppEnabled)' != 'true'" Text="TakeItOrLeaveIt: building WITHOUT the phone app (set S1RefsDir in local.build.props; see docs/BUILDING.md)." />
+    <Message Importance="high" Condition="'$(GamePatchesEnabled)' == 'true'" Text="TakeItOrLeaveIt: building WITH the player-sales game hooks." />
+    <Message Importance="high" Condition="'$(GamePatchesEnabled)' != 'true'" Text="TakeItOrLeaveIt: building WITHOUT the player-sales game hooks (no local game references)." />
   </Target>
 
   <!--
