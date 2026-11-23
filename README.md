@@ -4,17 +4,17 @@ A **Schedule I** quality-of-life mod for configurable customer and dealer sales 
 
 Customers request a **category and quantity** rather than an exact recipe. Players choose which discovered products can fulfill those orders using an **in-game mod menu**, with category-specific rules for the player and hired dealers.
 
-> **Status: Phase 03 (Player sales), implementation complete; physical acceptance deferred.**
+> **Status: Phase 04 (Hired dealer sales), implementation complete; physical acceptance not yet tested.**
 > Phase 00 (foundation) is verified in game on Schedule I v0.4.7f12 (IL2CPP). Phases 01 (product discovery and
-> rule engine) and 02 (the **Take It** phone app) are merged; Phase 02's first in-game test passed except the
-> layout, which was fixed and awaits a retest. Phase 03 applies the menu's rules to **customer orders**:
-> an accepted order becomes "N units of a category" and the handover accepts any permitted product of that
-> category, while the game keeps paying, awarding XP and moving items itself. Not yet tested in game.
-> Dealers stay vanilla until Phase 04. No release exists.
+> rule engine), 02 (the **Take It** phone app) and 03 (player sales) are merged; Phases 02's layout fix and 03
+> await in-game tests. Phase 04 applies the same category orders to **hired dealers**: a dealer reserves
+> eligible stock for each appointment and hands over any permitted product, while the game keeps paying,
+> taking the dealer's cut, awarding XP and moving items itself. Not yet tested in game. No release exists.
 
-## What works now (Phase 03)
+## What works now (Phase 04)
 
 - **Category orders** ([docs/PLAYER_SALES.md](docs/PLAYER_SALES.md)): customer contracts accepted while the mod is on take any product the Take It settings permit for their category, in exactly the ordered quantity, optionally mixed. Validation happens before anything leaves your inventory; the recipe-mismatch penalty is removed, quality still counts. Single player, IL2CPP build with local game references.
+- **Dealer appointments** ([docs/DEALER_SALES.md](docs/DEALER_SALES.md)): hired dealers fill the same category orders from their own eligible stock. Units are reserved per dealer so two appointments never share them; short appointments wait for stock; lost stock is replanned; nothing is reserved across reloads. Payment and commission stay vanilla.
 
 - **Take It** app on the in-game phone (IL2CPP + S1API 3.2.3): Overview, Products, Settings, Diagnostics.
 - Per category: *Any Unlocked*, *Selected Only*, *Disabled*; only products unlocked in the active save can be selected.
@@ -94,16 +94,19 @@ See [docs/BUILDING.md](docs/BUILDING.md) (output locations, optional auto-deploy
 | [docs/PLAYER_SALES.md](docs/PLAYER_SALES.md) | Phase 03 category orders: validation, mixed deliveries, transaction, snapshots, limitations |
 | [docs/PHASE_03_PATCH_ANALYSIS.md](docs/PHASE_03_PATCH_ANALYSIS.md) | Verified customer-sale call graph of the installed build and the hooks used |
 | [docs/PHASE_03_TESTING.md](docs/PHASE_03_TESTING.md) | Phase 03 in-game test sales, lifecycle checks, P03-T01..T38 status |
+| [docs/DEALER_SALES.md](docs/DEALER_SALES.md) | Phase 04 dealer appointments: reservations, waiting for stock, handover, recovery, limitations |
+| [docs/PHASE_04_PATCH_ANALYSIS.md](docs/PHASE_04_PATCH_ANALYSIS.md) | Verified dealer call graph of the installed build and the hooks used |
+| [docs/PHASE_04_TESTING.md](docs/PHASE_04_TESTING.md) | Phase 04 in-game scenarios DS01..DS18, P04-T01..T48 status |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Project boundaries, adapter design, eligibility engine, S1API evaluation |
 | [docs/BUILDING.md](docs/BUILDING.md) | Build, test, package, local deploy |
 | [docs/INSTALLATION.md](docs/INSTALLATION.md) | Installing and verifying the development DLL |
 
 ## Current limitations
 
-- Player sales are untested in game, single player only, and exist only in the IL2CPP build made with local game references (not in the CI artifact, not in the Mono build). The customer's phone message still names the game's chosen product; the handover screen shows the real requirement.
-- Dealers are unchanged until Phase 04; presets and quality/effect rules come later; settings migration/backup polish is Phase 06.
+- Player and dealer sales are untested in game, single player only, and exist only in the IL2CPP build made with local game references (not in the CI artifact, not in the Mono build). The customer's phone message still names the game's chosen product; the handover screen shows the real requirement.
+- Dealers accept contracts with the game's own stock check; presets, separate dealer rules and quality/effect rules come in Phase 05; settings migration/backup polish is Phase 06.
 - The phone menu is IL2CPP-only, needs S1API, and is not in the CI artifact; its layout fix awaits an in-game retest.
-- The customer-sale hooks are verified against the installed build's call graph ([PHASE_03_PATCH_ANALYSIS.md](docs/PHASE_03_PATCH_ANALYSIS.md)); dealer stock selection is still UNVERIFIED (Phase 04).
+- The customer and dealer hooks are verified against the installed build's call graph ([PHASE_03_PATCH_ANALYSIS.md](docs/PHASE_03_PATCH_ANALYSIS.md), [PHASE_04_PATCH_ANALYSIS.md](docs/PHASE_04_PATCH_ANALYSIS.md)); the behaviour marked PROBABLE there is what the in-game tests confirm.
 
 ## License
 

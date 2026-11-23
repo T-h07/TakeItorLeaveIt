@@ -1,7 +1,7 @@
 # Take It Or Leave It — Development Roadmap
 
 > **Project:** Schedule I sales-overhaul mod  
-> **Status:** Phases 00-02 merged (Phase 00 verified in game). Phase 03 (player sales) implementation complete, in-game acceptance deferred  
+> **Status:** Phases 00-03 merged (Phase 00 verified in game). Phase 04 (dealer sales) implementation complete, in-game acceptance not yet tested  
 > **Target release:** v1.0.0  
 > **Development branch:** `develop`  
 > **Goal:** Make selling simpler while giving the player precise control over **what can be sold**.
@@ -152,6 +152,14 @@ payment, XP, item transfer and completion. Exact quantity only, mixing switchabl
 **We call this done when:** Dealers can repeatedly complete permitted orders without stock mismatch, skipped customers, lost goods, duplicate payment, or commission errors.
 
 **Milestone:** **Single-player beta** — both personal and dealer sales function.
+
+**Implementation status (Phase 04):** done, in-game acceptance not yet tested. Chosen approach (from the verified
+call graph, [PHASE_04_PATCH_ANALYSIS.md](docs/PHASE_04_PATCH_ANALYSIS.md)): a dealer contract accepted while the
+mod is on gets the same snapshot as a player order; a per-dealer reservation ledger holds eligible units so two
+appointments never share stock (waiting for stock when short, invalidating and replanning when stock is lost);
+at the dealer's handover the mod picks the products and units and the game's own removal method removes them;
+payment, cut and XP stay vanilla. Reservations are rebuilt from live inventory after loading. Single player only.
+Details: [DEALER_SALES.md](docs/DEALER_SALES.md); tests: [PHASE_04_TESTING.md](docs/PHASE_04_TESTING.md).
 
 ### Phase 05 — Advanced Customization & Presets
 

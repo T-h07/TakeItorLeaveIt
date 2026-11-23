@@ -19,7 +19,7 @@ order** and, if so, stores a **snapshot** next to it:
 
 | Condition | Result |
 | --- | --- |
-| The contract is handled by a dealer | Vanilla (dealers are Phase 04) |
+| The contract is handled by a dealer | Not a player order: handled by dealer sales ([DEALER_SALES.md](DEALER_SALES.md)) |
 | Mod off for this save, or settings not loaded / unreadable | Vanilla |
 | Product catalog not ready, unknown product, invalid quantity | Vanilla |
 | The order lists products from more than one category | Vanilla |
@@ -167,4 +167,4 @@ report says **Unavailable** with the reason, and the game runs vanilla.
   PROBABLE (call graph), confirmed only by the in-game tests.
 - `HandoverScreenContractMode.GetError` returning `true` for "there is an error" is PROBABLE; if it were the
   opposite, the match hook alone still blocks invalid deliveries (they score 0).
-- Single player only; dealers unchanged (Phase 04); no quality/effect rules yet (Phase 05).
+- Single player only; dealers: see [DEALER_SALES.md](DEALER_SALES.md); no quality/effect rules yet (Phase 05).

@@ -47,7 +47,7 @@ boundaries in §2.
 | **Core** | .NET Standard 2.0 only | Unity, MelonLoader, Harmony, game assemblies |
 | **Game** | Core, MelonLoader, HarmonyX, game assemblies (Phase 01+) | UI internals |
 | **UI** (Phase 02: `Game/PhoneMenu` folder, not a project) | Core, Unity UI, S1API 3.2.3 | business rules (asks `ModMenuController`) |
-| **Sales hooks** (Phase 03: `Game/Sales` folder) | Core `Sales/`, HarmonyX, Assembly-CSharp interop | sales decisions (asks `PlayerSaleCoordinator`) |
+| **Sales hooks** (Phase 03/04: `Game/Sales` folder) | Core `Sales/` and `Dealers/`, HarmonyX, Assembly-CSharp interop | sales decisions (asks `PlayerSaleCoordinator` / `DealerSaleCoordinator`) |
 | **Persistence** (Phase 06) | Core; ideally nothing game-specific | Harmony |
 | **Multiplayer** (Phase 07) | Core, Game, FishNet (via game assemblies) | UI |
 
@@ -224,6 +224,32 @@ Behaviour and limitations: [PLAYER_SALES.md](PLAYER_SALES.md). Hook evidence: [P
 patch module is registered through `PatchManager` (all-or-nothing): if any target is missing, every mod patch
 is removed and the status report says *Unavailable*.
 
+## 6c. Dealer sales (Phase 04)
+
+Behaviour and limitations: [DEALER_SALES.md](DEALER_SALES.md). Hook evidence: [PHASE_04_PATCH_ANALYSIS.md](PHASE_04_PATCH_ANALYSIS.md).
+
+```text
+ QuestManager.ContractAccepted (dealer set) ─postfix─► DealerSaleCoordinator.OnContractAccepted
+        │  CategoryOrderFactory.CreateForDealer (same snapshot rules)      │ DealerStock (GameDealers.Stock)
+        ▼                                                                  ▼
+ DealerAppointment (Waiting / Reserved / Committing / CommitObserved) ◄─► ReservationLedger (per dealer, per product)
+        ▲                                     └─ TryReserve → InventoryAllocationPlanner → SaleEligibilityPolicy
+ Dealer.OnTick ─postfix (D2, throttled)─► Reconcile: invalidate lost stock, retry waiting (bounded)
+ Dealer.RemoveContractItems ─prefix (D1)─► PrepareHandover → game's RemoveAndReturnProductFromInventory per line
+                                            → CompleteHandover (hold released)
+ Contract.GetProductListMatch / Customer.ProcessHandover / Contract.Complete... ─ shared Phase 03 hooks
+ DealerOrderStore (<save-id>.dealer-orders.json: snapshots only, never reservations)
+```
+
+| Component | Location | Responsibility |
+| --- | --- | --- |
+| `DealerStock` | Core `Dealers/` | Immutable per-dealer stock snapshot in units; invalid/duplicate stacks ignored; change signature |
+| `ReservationLedger`, `Reservation` | Core `Dealers/` | Atomic, idempotent, per-owner holds; states Proposed/Reserved/Committing/CommitObserved/Released/Expired/Invalidated; reconcile (newest first); invariant check |
+| `DealerAppointment`, `DealerSaleCoordinator` | Core `Dealers/` | Appointment state machine incl. WaitingForEligibleStock and ReturnedToVanilla; handover plan; exactly-once settlement observation; bounded replanning |
+| `DealerOrderStore` | Core `Dealers/` | Per-save appointment JSON (shares the order snapshot format with `ActiveOrderStore`) |
+| `DealerSalesStatus` | Core `Dealers/` | "Dealer sales: Active/Unavailable/Disabled", counts, last error |
+| `DealerSalesPatches`, `GameDealers` | Game `Sales/` (`GAME_PATCHES` only) | D1/D2 hooks by exact signature; dealer id and inventory adapter; reconcile throttle |
+
 ## 7. Configuration and persistence strategy (Phase 02 / 06)
 
 - Implemented in Phase 02: **mod-owned JSON**, never inside vanilla save files, one file per save at
@@ -232,6 +258,9 @@ is removed and the status report says *Unavailable*.
   (`mixedDeliveries` added in Phase 03, optional, default true).
 - Phase 03 adds `<save-id>.orders.json` next to it: the active category-order snapshots
   (`{schemaVersion, orders:[{contract, category, requiredUnits, allowedProducts[], requestedProducts[], mixedDeliveries, policyRevision, committed}]}`).
+- Phase 04 adds `<save-id>.dealer-orders.json`: managed dealer appointments
+  (`{schemaVersion, appointments:[{contract, dealer, sequence, category, requiredUnits, allowedProducts[], requestedProducts[], mixedDeliveries, policyRevision, committed}]}`).
+  Reservations are deliberately not persisted; they are rebuilt from live dealer inventory after loading.
 - Deferred to Phase 06: migrations beyond schema 1, global (non-save) settings, export/import, backups/rotation.
 - Selections reference stable product IDs. Unknown or locked IDs are treated as inactive and never unlocked.
 - MelonPreferences is not used: dynamic per-save product lists need our own file.
@@ -246,6 +275,8 @@ is removed and the status report says *Unavailable*.
 - Phase 03 verified (call graph) that customer handovers settle through a FishNet server RPC
   (`ProcessHandoverServerSide`) and that acceptance checks `InstanceFinder.IsServer`. Until Phase 07, player
   sales are active only on a server with at most one player; otherwise every hook defers to vanilla.
+- Phase 04 verified that the dealer handover routine checks `InstanceFinder.IsServer` and that the dealer's
+  payment is a server RPC (`SubmitPayment`); dealer sales use the same single-player-host gate.
 
 ## 9. Key decisions
 
