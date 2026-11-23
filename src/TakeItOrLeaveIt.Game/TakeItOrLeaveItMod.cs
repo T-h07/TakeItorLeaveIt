@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using MelonLoader;
 using MelonLoader.InternalUtils;
 using MelonLoader.Utils;
@@ -6,6 +7,8 @@ using TakeItOrLeaveIt.Core;
 using TakeItOrLeaveIt.Core.Compatibility;
 using TakeItOrLeaveIt.Core.Diagnostics;
 using TakeItOrLeaveIt.Core.Environment;
+using TakeItOrLeaveIt.Core.Menu;
+using TakeItOrLeaveIt.Core.Persistence;
 using TakeItOrLeaveIt.Core.Policies;
 using TakeItOrLeaveIt.Game;
 using TakeItOrLeaveIt.Game.Diagnostics;
@@ -31,8 +34,12 @@ public sealed class TakeItOrLeaveItMod : MelonMod
     private PatchManager? _patches;
     private ProductDiscoveryRuntime? _discovery;
 
-    /// <summary>Phase 01 uses the default policy (AnyUnlocked everywhere); Phase 06 adds persistence and the menu.</summary>
+    /// <summary>Saved policy of the active save; published by the menu controller after each successful save.</summary>
     private readonly InMemoryPolicyProvider _policies = new();
+    private ModMenuController? _menu;
+
+    /// <summary>Menu state for the in-game UI (null if initialization failed).</summary>
+    internal static ModMenuController? Menu { get; private set; }
 
     /// <summary>True when initialization completed and gameplay features may be enabled.</summary>
     public static bool IsOperational { get; private set; }
@@ -55,6 +62,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
                 _patches.ApplyAll();
             })
             .Step("Product discovery (read-only)", () => _discovery = new ProductDiscoveryRuntime(_log, _policies))
+            .Step("Mod menu settings", CreateMenu)
             .Run();
 
         IsOperational = outcome == StartupOutcome.Succeeded;
@@ -102,8 +110,28 @@ public sealed class TakeItOrLeaveItMod : MelonMod
     public override void OnDeinitializeMelon()
     {
         _patches?.RemoveAll();
+        _menu?.Dispose();
+        _menu = null;
+        Menu = null;
         _discovery = null;
         IsOperational = false;
+    }
+
+    private void CreateMenu()
+    {
+        // Mod-owned folder under MelonLoader's UserData; never inside the game's own save folders.
+        var root = Path.Combine(MelonEnvironment.UserDataDirectory, ModInfo.Name);
+        _menu = new ModMenuController(_discovery!.Catalog, new JsonPolicyStore(root), _policies, _log)
+        {
+            HostDiagnostics = new[]
+            {
+                $"Mod: {ModInfo.Name} {ModInfo.Version} ({BuildTarget.Runtime} build)",
+                $"Game: {UnityInformationHandler.GameName} {UnityInformationHandler.GameVersion} (Unity {UnityInformationHandler.EngineVersion})",
+                $"MelonLoader {MelonLoader.Properties.BuildInfo.Version}; runtime {LoaderRuntime()}",
+            },
+        };
+        Menu = _menu;
+        _log.Info("Mod menu settings initialized (stored per save under UserData/TakeItOrLeaveIt/saves).");
     }
 
     private void LogEnvironment()
