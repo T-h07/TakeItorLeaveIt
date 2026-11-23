@@ -6,8 +6,10 @@ using TakeItOrLeaveIt.Core;
 using TakeItOrLeaveIt.Core.Compatibility;
 using TakeItOrLeaveIt.Core.Diagnostics;
 using TakeItOrLeaveIt.Core.Environment;
+using TakeItOrLeaveIt.Core.Policies;
 using TakeItOrLeaveIt.Game;
 using TakeItOrLeaveIt.Game.Diagnostics;
+using TakeItOrLeaveIt.Game.Discovery;
 using TakeItOrLeaveIt.Game.Patching;
 
 [assembly: MelonInfo(typeof(TakeItOrLeaveItMod), ModInfo.Name, ModInfo.Version, ModInfo.Author)]
@@ -20,13 +22,17 @@ using TakeItOrLeaveIt.Game.Patching;
 namespace TakeItOrLeaveIt.Game;
 
 /// <summary>
-/// MelonLoader entry point. Phase 00: logs diagnostics and prepares Harmony infrastructure.
-/// It does NOT change any gameplay (customers, dealers, products, inventory, money, XP, saves).
+/// MelonLoader entry point. Phase 01: diagnostics, Harmony infrastructure (no patches) and read-only
+/// product discovery. It does NOT change any gameplay (customers, dealers, products, inventory, money, XP, saves).
 /// </summary>
 public sealed class TakeItOrLeaveItMod : MelonMod
 {
     private IModLog _log = null!;
     private PatchManager? _patches;
+    private ProductDiscoveryRuntime? _discovery;
+
+    /// <summary>Phase 01 uses the default policy (AnyUnlocked everywhere); Phase 06 adds persistence and the menu.</summary>
+    private readonly InMemoryPolicyProvider _policies = new();
 
     /// <summary>True when initialization completed and gameplay features may be enabled.</summary>
     public static bool IsOperational { get; private set; }
@@ -44,10 +50,11 @@ public sealed class TakeItOrLeaveItMod : MelonMod
             .Step("MelonLoader integration", () => _log.Info("MelonLoader integration initialized."))
             .Step("Harmony infrastructure", () =>
             {
-                // Phase 00 registers no patch modules by design.
+                // Phase 01 still registers no patch modules: discovery is read-only polling.
                 _patches = new PatchManager(HarmonyInstance, _log, Array.Empty<IPatchModule>());
                 _patches.ApplyAll();
             })
+            .Step("Product discovery (read-only)", () => _discovery = new ProductDiscoveryRuntime(_log, _policies))
             .Run();
 
         IsOperational = outcome == StartupOutcome.Succeeded;
@@ -62,6 +69,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
                 }
 
                 _log.Info(ModInfo.InitializedMessage);
+                _log.Info("Phase 01 running in read-only mode: products are discovered and evaluated, nothing in the game is changed.");
                 break;
             case StartupOutcome.UnsupportedEnvironment:
                 _log.Error("Initialization stopped: unsupported environment. The mod is inactive; the game is unaffected.");
@@ -77,13 +85,24 @@ public sealed class TakeItOrLeaveItMod : MelonMod
         // One line per scene load (not per frame): confirms the mod survives into gameplay scenes.
         if (IsOperational)
         {
-            _log.Info($"Scene loaded: '{sceneName}' (index {buildIndex}). No gameplay changes in Phase 00.");
+            _log.Info($"Scene loaded: '{sceneName}' (index {buildIndex}). No gameplay changes in Phase 01.");
+            _discovery?.PollNow();
+        }
+    }
+
+    public override void OnUpdate()
+    {
+        // Throttled inside Tick(): a Stopwatch read per frame, a reflection poll about once per second.
+        if (IsOperational)
+        {
+            _discovery?.Tick();
         }
     }
 
     public override void OnDeinitializeMelon()
     {
         _patches?.RemoveAll();
+        _discovery = null;
         IsOperational = false;
     }
 
