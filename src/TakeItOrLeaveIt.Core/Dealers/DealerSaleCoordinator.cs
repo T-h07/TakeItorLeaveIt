@@ -264,8 +264,12 @@ public sealed class DealerSaleCoordinator
         ReserveResult? reserve = null;
         if (stock is not null)
         {
-            Remember(stock);
-            reserve = TryReserve(appointment, stock);
+            // Bring the dealer's existing holds in line with this fresh stock first, and let earlier waiting
+            // appointments go first (acceptance order); then report this appointment's own result.
+            Reconcile(stock, force: true);
+            reserve = Ledger.TryGet(order.ContractId, out var held)
+                ? new ReserveResult(ReserveOutcome.Reserved, held, stock.TotalUnits, string.Join(", ", held.Lines))
+                : TryReserve(appointment, stock);
         }
 
         return new DealerOrderCreation(OrderOutcome.Managed, appointment, reserve,
@@ -325,6 +329,7 @@ public sealed class DealerSaleCoordinator
 
         var reserved = new List<string>();
         var attempts = 0;
+        var capped = false;
         foreach (var appointment in _appointments.Values
                      .Where(a => a.DealerId == stock.DealerId && a.State == AppointmentState.WaitingForEligibleStock)
                      .OrderBy(a => a.Sequence)
@@ -332,6 +337,7 @@ public sealed class DealerSaleCoordinator
         {
             if (attempts++ >= MaxReservationsPerReconcile)
             {
+                capped = true; // the rest is retried on the next call, which must not be skipped
                 break;
             }
 
@@ -346,7 +352,15 @@ public sealed class DealerSaleCoordinator
             Version++;
         }
 
-        _lastReconcile[stock.DealerId] = (stock.Signature, Ledger.Version, Version);
+        if (capped)
+        {
+            _lastReconcile.Remove(stock.DealerId);
+        }
+        else
+        {
+            _lastReconcile[stock.DealerId] = (stock.Signature, Ledger.Version, Version);
+        }
+
         return new ReconcileReport(false, invalidated, reserved, returned, CountWaiting(stock.DealerId));
     }
 
