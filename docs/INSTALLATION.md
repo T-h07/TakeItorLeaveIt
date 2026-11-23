@@ -1,9 +1,12 @@
 # Installation (development build 0.0.1-dev)
 
-> Phase 02 build: it discovers products and adds the **Take It** phone app where you configure per-save
-> product rules. It does **not** change customers, dealers, products, money, XP or game saves; the rules are
-> applied to sales only from Phases 03/04. Phase 00 loading was verified on Schedule I v0.4.7f12 (IL2CPP);
-> Phase 01/02 in-game steps are in [PHASE_01_TESTING.md](PHASE_01_TESTING.md) and [PHASE_02_TESTING.md](PHASE_02_TESTING.md).
+> Phase 03 build: it discovers products, adds the **Take It** phone app where you configure per-save product
+> rules, and (IL2CPP build with local game references) applies them to **customer orders**: accepted orders
+> take any permitted product of their category ([PLAYER_SALES.md](PLAYER_SALES.md)). Payment, XP, items and
+> contract completion stay with the game; dealers, products and game saves are not changed. **Back up your
+> save before testing**: Phase 03 is not yet tested in game. Phase 00 loading was verified on Schedule I
+> v0.4.7f12 (IL2CPP); in-game steps: [PHASE_01_TESTING.md](PHASE_01_TESTING.md),
+> [PHASE_02_TESTING.md](PHASE_02_TESTING.md), [PHASE_03_TESTING.md](PHASE_03_TESTING.md).
 
 ## 1. Compatibility
 
@@ -23,9 +26,10 @@ Steam → Schedule I → Properties → Betas: *None* = IL2CPP, *alternate* = Mo
    (https://github.com/LavaGang/MelonLoader/releases). Launch the game **once** and quit. The first
    IL2CPP launch takes a while because MelonLoader generates its interop assemblies.
 2. Install S1API 3.2.3 following its own instructions if it is not installed yet (only needed for the menu).
-3. Get the mod files. **For the phone menu use a local IL2CPP package** built with references
+3. Get the mod files. **For the phone menu and player sales use a local IL2CPP package** built with references
    (`pwsh tools/Package-Mod.ps1`, output in `artifacts/package`; see [BUILDING.md](BUILDING.md#phase-02-phone-app-local-references)).
-   The CI artifact `TakeItOrLeaveIt-<sha>` (pull request *Checks* tab) is built without game files and has **no menu**.
+   The CI artifact `TakeItOrLeaveIt-<sha>` (pull request *Checks* tab) is built without game files and has **no menu
+   and no player sales**.
 4. Open the subfolder matching your runtime (`Il2Cpp` or `Mono`) and copy its **contents** into the game folder:
    - `Mods/TakeItOrLeaveIt.<Runtime>.dll` → `<Schedule I>/Mods/`
    - `UserLibs/TakeItOrLeaveIt.Core.dll` → `<Schedule I>/UserLibs/`
@@ -39,25 +43,36 @@ same lines). Expected lines, in order (timestamps omitted):
 
 ```text
 [TakeItOrLeaveIt] Initializing...
-[TakeItOrLeaveIt] TakeItOrLeaveIt 0.0.1-dev by T-h07 - phase 02 - In-game mod menu; build target: Il2Cpp.
+[TakeItOrLeaveIt] TakeItOrLeaveIt 0.0.1-dev by T-h07 - phase 03 - Player sales; build target: Il2Cpp.
 [TakeItOrLeaveIt] Game: 'Schedule I' by 'TVGS', version '<game version>', Unity <unity version>.
 [TakeItOrLeaveIt] MelonLoader 0.7.3; game runtime reported by loader: Il2Cpp.
 [TakeItOrLeaveIt] Runtime detected from game files: Il2Cpp.
 [TakeItOrLeaveIt]   evidence: ...
 [TakeItOrLeaveIt] Compatibility: Supported.
 [TakeItOrLeaveIt] MelonLoader integration initialized.
-[TakeItOrLeaveIt] No gameplay patches enabled (sales are not changed until Phases 03/04).
 [TakeItOrLeaveIt] Product discovery initialized (read-only; polling save state about once per second).
 [TakeItOrLeaveIt] Mod menu settings initialized (stored per save under UserData/TakeItOrLeaveIt/saves).
+[TakeItOrLeaveIt] Patch module applied: Player sales (category orders)
+[TakeItOrLeaveIt] Harmony patches active: 10 method(s) across 1 module(s).
+[TakeItOrLeaveIt] Player Sales: Waiting for a save and product data
+[TakeItOrLeaveIt] Runtime: Il2Cpp
+[TakeItOrLeaveIt] ... (catalog, policy, Offer hook: Active, Handover validation: Active, Transaction integration: Active, session, orders)
 [TakeItOrLeaveIt] Initialization completed.
 [TakeItOrLeaveIt] Version 0.0.1-dev initialized successfully.
-[TakeItOrLeaveIt] Phase 02: product discovery, mod menu and per-save settings. Sales are not changed yet (Phases 03/04).
+[TakeItOrLeaveIt] Phase 03: player sales hooks active; dealers unchanged until Phase 04.
 [TakeItOrLeaveIt] S1API detected: the 'Take It' app is available on the in-game phone.
-[TakeItOrLeaveIt] Scene loaded: '<scene>' (index n). No gameplay changes in Phase 02.
+[TakeItOrLeaveIt] Scene loaded: '<scene>' (index n).
 
 After loading a save, a `Product catalog: Ready` block lists the discovered products
-(see [PHASE_01_TESTING.md](PHASE_01_TESTING.md)).
+(see [PHASE_01_TESTING.md](PHASE_01_TESTING.md)), followed by
+`Player sales authority: Single player host.` and `Player Sales: Enabled.`
+
 ```
+
+A build without local game references (CI artifact, Mono) logs
+`No gameplay patches in this build ...` and `Player Sales: Unavailable` instead: sales stay vanilla.
+`Patch module 'Player sales (category orders)' failed` means this game version differs from the one the
+hooks were built for: all mod patches are removed and the game runs vanilla; send the log.
 
 (`Mono` replaces `Il2Cpp` on the alternate branch.) Problems are reported as:
 
@@ -73,8 +88,8 @@ Load a save, open the in-game phone and tap **Take It** (green circle with a che
 exists in the gameplay scene. Screens: Overview, Products, Settings, Diagnostics; changes take effect only
 after **Save**. Full walkthrough: [PHASE_02_TESTING.md](PHASE_02_TESTING.md).
 
-Settings are stored per save in `<Schedule I>/UserData/TakeItOrLeaveIt/saves/<save-id>.json`. Game save
-files are never modified.
+Settings are stored per save in `<Schedule I>/UserData/TakeItOrLeaveIt/saves/<save-id>.json`, and active
+category orders in `<save-id>.orders.json` next to it. Game save files are never modified.
 
 If the log says `S1API is not installed` or `This build does not include the in-game phone menu`, install
 S1API or use a locally built IL2CPP package respectively.
@@ -87,7 +102,8 @@ S1API or use a locally built IL2CPP package respectively.
 ## 6. Uninstall
 
 Close the game and delete `<Schedule I>/Mods/TakeItOrLeaveIt.*.dll` and `<Schedule I>/UserLibs/TakeItOrLeaveIt.Core.dll`.
-Optionally delete `<Schedule I>/UserData/TakeItOrLeaveIt/` (menu settings). The mod writes no other files and does not touch game saves. To remove MelonLoader as well, use its installer's
+Optionally delete `<Schedule I>/UserData/TakeItOrLeaveIt/` (menu settings and active-order snapshots;
+orders accepted while the mod was installed then need their exact product again, as in vanilla). The mod writes no other files and does not touch game saves. To remove MelonLoader as well, use its installer's
 uninstall option or verify the game files in Steam.
 
 ## 7. Known limitations
@@ -95,5 +111,6 @@ uninstall option or verify the game files in Steam.
 - In-game loading is untested; the `MelonGame` developer/name strings come from public S1API documentation.
 - Loading `TakeItOrLeaveIt.Core.dll` from `UserLibs` follows MelonLoader's documented layout but has not been observed yet.
   For the Mono build, Unity's Mono runtime must load a .NET Standard 2.0 library (normally supported; unverified for this game).
-- No gameplay features exist yet: the menu saves rules, but sales use them only from Phases 03/04.
+- Player sales are untested in game, single player only, IL2CPP-only and only in builds made with local game
+  references (see [PLAYER_SALES.md §10](PLAYER_SALES.md#10-known-limitations)). Dealers are unchanged until Phase 04.
 - The phone menu is IL2CPP-only and needs S1API 3.2.3; the Mono build has no menu.

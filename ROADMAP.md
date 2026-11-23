@@ -1,7 +1,7 @@
 # Take It Or Leave It — Development Roadmap
 
 > **Project:** Schedule I sales-overhaul mod  
-> **Status:** Phase 00 implementation complete, in-game acceptance pending. No playable features yet  
+> **Status:** Phases 00-02 merged (Phase 00 verified in game). Phase 03 (player sales) implementation complete, in-game acceptance deferred  
 > **Target release:** v1.0.0  
 > **Development branch:** `develop`  
 > **Goal:** Make selling simpler while giving the player precise control over **what can be sold**.
@@ -125,6 +125,13 @@ We develop one phase at a time. Each phase starts on its own `feature/...` branc
 **We call this done when:** A real gameplay test passes valid and invalid handovers, gives money/XP exactly once, removes exactly the delivered quantity, and leaves no broken order state.
 
 **Milestone:** **First gameplay-functional prototype** — personal sales work.
+
+**Implementation status (Phase 03):** done, in-game acceptance deferred. Chosen approach (from the verified call
+graph, [PHASE_03_PATCH_ANALYSIS.md](docs/PHASE_03_PATCH_ANALYSIS.md)): offers stay vanilla; a player contract
+accepted while the mod is on gets an acceptance-time snapshot "N units of category X, any of these products";
+the game's own match function answers from that snapshot (quality kept, recipe dropped) and the game performs
+payment, XP, item transfer and completion. Exact quantity only, mixing switchable, single player only. Details:
+[PLAYER_SALES.md](docs/PLAYER_SALES.md); tests: [PHASE_03_TESTING.md](docs/PHASE_03_TESTING.md).
 
 ### Phase 04 — Hired Dealer Sales & Appointments
 

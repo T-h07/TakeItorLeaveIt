@@ -4,6 +4,12 @@
 > Schedule I build yet.** The development machine used for Phase 00 has no Schedule I installation
 > (see [ENVIRONMENT.md](ENVIRONMENT.md)). Every entry is therefore **probable** (strong public evidence)
 > or **UNVERIFIED / unresolved** (no evidence). Nothing here is patched by the mod in Phase 00.
+>
+> **Phase 03 update:** the customer-sale entries (CUS-02/09/10, ORD-01/02/07, ECO-01/02, player-sale flow in §8)
+> were checked against the call graph of the installed Schedule I v0.4.7f12 IL2CPP build. The verified
+> signatures, call edges and the hooks the mod now uses are in
+> **[PHASE_03_PATCH_ANALYSIS.md](PHASE_03_PATCH_ANALYSIS.md)**, which supersedes this file for those rows.
+> Dealer rows (Phase 04) are unchanged.
 
 ## 1. How to read this map
 
@@ -49,8 +55,8 @@ acceptance, payment...), which is how the **UNVERIFIED** rows get filled in.
 | CUS-06 | Assembly-CSharp? | `ScheduleOne.Economy.CustomerData` (ScriptableObject) | `PreferredProperties` : `List<ScheduleOne.Effects.Effect>` | **Preferred effects**: the main cause of recipe pickiness | Consumed by enjoyment/acceptance scoring (**UNVERIFIED**) | E1 | Do **not** mutate the shared ScriptableObject. Patch the *scoring* method that reads it (not yet identified) | High if mutated | Both* | probable | 03, 05 |
 | CUS-07 | Assembly-CSharp? | `CustomerData` | `DefaultAffinityData` : `CustomerAffinityData`; `Standards` : `ECustomerStandard` (VeryLow…VeryHigh); `MinWeeklySpend`, `MaxWeeklySpend`, `MinOrdersPerWeek`, `MaxOrdersPerWeek`, `PreferredOrderDay`, `OrderTime`, `GuaranteeFirstSampleSuccess`, `CanBeDirectlyApproached` | Quality standard, demand frequency, order timing | Inputs to order generation (UNVERIFIED) | E1 | Read-only. `Standards` = **quality restriction** source (Phase 05) | Low | Both* | probable | 01, 05 |
 | CUS-08 | Assembly-CSharp? | `CustomerAffinityData` / `ProductTypeAffinity` | `ProductAffinities` : `List<ProductTypeAffinity>`; `ProductTypeAffinity.DrugType` : `EDrugType`, `.Affinity` : `float` | Per-category liking: category-level demand | UNVERIFIED | E1 | Read-only; useful for category-based order generation | Low | Both* | probable | 03 |
-| CUS-09 | — | UNVERIFIED | **Handover acceptance / offer evaluation** (where the customer decides to accept the delivered items) | Core of Phase 03 | UNVERIFIED | — | Expected: prefix/postfix on the evaluation method; must keep vanilla payment path | **High** | UNVERIFIED | unresolved | 03 |
-| CUS-10 | — | UNVERIFIED | **Satisfaction / enjoyment calculation** after a deal | Penalties for "wrong" recipe | UNVERIFIED | — | Postfix to neutralise penalties caused only by recipe/effect mismatch | High | UNVERIFIED | unresolved | 03 |
+| CUS-09 | Assembly-CSharp | `Quests.Contract` / `UI.Handover.HandoverScreenContractMode` | **Handover acceptance**: `Contract.GetProductListMatch(List<ItemInstance>, ref int)` (+ `List<ProductItemInstance>` overload), gate `HandoverScreenContractMode.GetError(ref string)` | Core of Phase 03 | See PHASE_03_PATCH_ANALYSIS §2 | installed-build xref | **Patched in Phase 03** (prefix on both overloads, postfix on GetError) for mod-managed contracts only | High | IL2CPP | **verified** (existence, call edges) | 03 |
+| CUS-10 | Assembly-CSharp | `Economy.Customer` | **Satisfaction**: `EvaluateDelivery(Contract, List<ItemInstance>, ref float, ref EDrugType, ref int, ref float)`, which calls CUS-09 | Recipe penalty enters through the match | See PHASE_03_PATCH_ANALYSIS §2 | installed-build xref | Not patched: receives the CUS-09 result (quality kept, recipe dropped) | High | IL2CPP | **verified** (edge); formula PROBABLE | 03 |
 | CUS-11 | — | `ScheduleOne.NPCs.Relation.NPCRelationData` | Relationship change method(s): only `Unlock(EUnlockType)` seen | Relationship progression | UNVERIFIED for deltas | E1 (`Unlock` only) | Do not patch; must stay vanilla | Medium | Both* | unresolved | 03 |
 
 ## 3. Orders / contracts (`ScheduleOne.Quests`, `ScheduleOne.Product`)
@@ -63,7 +69,7 @@ acceptance, payment...), which is how the **UNVERIFIED** rows get filled in.
 | ORD-04 | Assembly-CSharp? | `ScheduleOne.Quests.ContractInfo` | ctor `(float payment, ProductList products, string deliveryLocationGUID, QuestWindowConfig deliveryWindow, bool expires, int expiresAfter, int pickupScheduleIndex, bool isCounterOffer)` (parameter names from S1API named arguments) | Serializable order description passed to `Customer.OfferContract` | `ContractInfo` → `Customer.OfferContract` → `Contract` | E1 | Natural point to tag mod-generated orders (Phase 03) | Medium | Both* | probable | 03 |
 | ORD-05 | Assembly-CSharp? | `ScheduleOne.Product.ProductList` | field `entries` : `List<ProductList.Entry>` | Line items of an order | — | E1 | Read-only | Low | Both* | probable | 03, 04 |
 | ORD-06 | Assembly-CSharp? | `ProductList.Entry` | `string ProductID`, `int Quantity`, `EQuality Quality` | **Orders reference an exact product ID**, a quantity and a minimum quality | — | E1 | Category matching = map `ProductID` → `ProductDefinition.DrugType` | Low | Both* | probable | 03 |
-| ORD-07 | — | UNVERIFIED | Contract completion / failure / expiry / cancellation methods | Order lifecycle end states | UNVERIFIED | — | Postfix observation first | High | UNVERIFIED | unresolved | 03, 06 |
+| ORD-07 | Assembly-CSharp | `Quests.Contract` | `Complete(bool)`, `End()`, `Expire(bool)`, `Fail(bool)` | Order lifecycle end states | → `Quest.Complete/End`, `QuestManager.SendQuestAction` | installed-build xref | **Postfix observation** (Phase 03 snapshot cleanup) | Low | IL2CPP | **verified** | 03, 06 |
 | ORD-08 | — | UNVERIFIED | Contract save/restore (`ScheduleOne.Persistence.Datas.*`) | Serialization of active orders | UNVERIFIED | — | Read-only; mod-generated orders must round-trip | Medium | UNVERIFIED | unresolved | 06 |
 
 ## 4. Products, recipes and unlocks (`ScheduleOne.Product`, `ScheduleOne.Effects`, `ScheduleOne.ItemFramework`)
@@ -150,10 +156,10 @@ CustomerData (PreferredProperties, Standards, affinities)          CUS-06/07/08 
   → order generation                                               UNVERIFIED (missing link)
   → ContractInfo(payment, ProductList{ProductID, Quantity, Quality}, …)   ORD-04/05/06  probable
   → Customer.OfferContract(ContractInfo) → Contract                CUS-02, ORD-01..03  probable
-  → player meets customer, hands over items (handover UI)          UNVERIFIED (missing link)
-  → acceptance / satisfaction evaluation                           CUS-09/10 UNVERIFIED  ← Phase 03 core hook
-  → inventory removal                                              UNVERIFIED (missing link)
-  → payment MoneyManager.ChangeCashBalance? / XP LevelManager.AddXP?   ECO-01/02 names probable, call site UNVERIFIED
+  → player meets customer, hands over items (handover UI)          verified (Phase 03): Customer.CompleteContractDialogueChosen → HandoverScreen.Open_Contract
+  → acceptance / satisfaction evaluation                           CUS-09/10 verified  ← Phase 03 hooks (PHASE_03_PATCH_ANALYSIS.md)
+  → inventory removal                                              verified: Customer.ProcessHandover → HandoverScreen.TransferCustomerItemsToNPC
+  → payment / XP                                                   verified: Contract.SubmitPayment → MoneyManager.ChangeCashBalance; RpcLogic___ProcessHandoverServerSide → LevelManager.AddXP
   → relationship / CompletedDeliveries update                      CUS-04/11 unresolved
 ```
 
@@ -184,4 +190,4 @@ All observations are **read-only Harmony postfixes that only log**, run in a deb
 1. **Game version coupling:** S1API's evidence corresponds to whichever Schedule I build S1API 3.2.x targeted. Field names and RPC hashes can change with game updates, so every Phase 03/04 hook needs a startup existence check (PatchManager already rolls back on failure).
 2. **Shared ScriptableObjects:** `CustomerData` is a shared asset. Mutating `PreferredProperties` would leak across customers and saves; patch the scoring instead.
 3. **IL2CPP specifics:** IL2CPP collections (`Il2CppSystem.Collections.Generic.List<T>`) and the `Il2Cpp` namespace prefix mean the Game layer needs per-runtime adapters (`#if IL2CPP_BUILD`) for every game type it touches.
-4. **Handover/acceptance path is unknown.** It is the single most important missing link for Phase 03 and cannot be guessed.
+4. ~~Handover/acceptance path is unknown.~~ Resolved in Phase 03 from the installed build's call graph ([PHASE_03_PATCH_ANALYSIS.md](PHASE_03_PATCH_ANALYSIS.md)); runtime behaviour still to be confirmed in game.

@@ -47,6 +47,7 @@ boundaries in §2.
 | **Core** | .NET Standard 2.0 only | Unity, MelonLoader, Harmony, game assemblies |
 | **Game** | Core, MelonLoader, HarmonyX, game assemblies (Phase 01+) | UI internals |
 | **UI** (Phase 02: `Game/PhoneMenu` folder, not a project) | Core, Unity UI, S1API 3.2.3 | business rules (asks `ModMenuController`) |
+| **Sales hooks** (Phase 03: `Game/Sales` folder) | Core `Sales/`, HarmonyX, Assembly-CSharp interop | sales decisions (asks `PlayerSaleCoordinator`) |
 | **Persistence** (Phase 06) | Core; ideally nothing game-specific | Harmony |
 | **Multiplayer** (Phase 07) | Core, Game, FishNet (via game assemblies) | UI |
 
@@ -150,7 +151,7 @@ created: the phone app is a folder (`Game/PhoneMenu`) compiled only into the IL2
                                                               │ StateChanged
                                                               ▼
  JsonPolicyStore (UserData/…/saves/<id>.json) ◄──Load/Save── ModMenuController (Core) ──► InMemoryPolicyProvider
-                                                              ▲   ViewVersion            (saved policy, for 03/04)
+                                                              ▲   ViewVersion            (saved policy → player sales)
                                                               │ actions / views
                                     TakeItOrLeaveItPhoneApp (Game/PhoneMenu, S1API + Unity UI)
 ```
@@ -190,11 +191,47 @@ Selections of products that are not unlocked stay in the file but count as inact
 phone app → logged once, menu disabled for the session. UI build failure → an error panel inside the app.
 Menu initialization failure → the app shows "unavailable".
 
+## 6b. Player sales (Phase 03)
+
+Behaviour and limitations: [PLAYER_SALES.md](PLAYER_SALES.md). Hook evidence: [PHASE_03_PATCH_ANALYSIS.md](PHASE_03_PATCH_ANALYSIS.md).
+
+```text
+ QuestManager.ContractAccepted ─postfix─► PlayerSaleCoordinator.OnContractAccepted ─► CategoryOrderFactory
+                                                    │ snapshot (CategoryOrder)               (policy + catalog)
+                                                    ▼
+                                             ActiveOrderBook ◄──► ActiveOrderStore (<save-id>.orders.json)
+                                                    ▲
+ Contract.GetProductListMatch ─prefix─┐             │
+ HandoverScreenContractMode.GetError ─postfix─► GameSales.Validate ─► DeliveryValidator ─► InventoryAllocationPlanner
+                                      └──────────► DeliveryMatch (quality only)               └─► SaleEligibilityPolicy
+ Customer.ProcessHandover ─postfix─► ObserveCommit (once)
+ Contract.Complete/End/Expire/Fail ─postfix─► End (snapshot removed)
+```
+
+| Component | Location | Responsibility |
+| --- | --- | --- |
+| `CategoryOrder`, `CategoryOrderFactory` | Core `Sales/` | Acceptance-time snapshot; decides managed vs vanilla (dealer, disabled, empty, mixed categories, catalog/policy not ready) |
+| `DeliveryValidator`, `DeliveredItem`, `DeliveryValidation` | Core `Sales/` | Pre-transfer validation against the snapshot; reuses the planner/eligibility policy; exact units; mixed rule; player-facing reason |
+| `DeliveryMatch` | Core `Sales/` | Match value from per-item quality ratings (recipe term removed) |
+| `SaleTransaction`, `ActiveOrderBook` | Core `Sales/` | State machine (Pending → Validated/Rejected → CommitObserved → Completed; Failed/Canceled/Expired), exactly-once commit observation, cleanup, pruning |
+| `ActiveOrderStore` | Core `Sales/` | Per-save orders JSON (schema 1, atomic write, invalid entries dropped → vanilla) |
+| `PlayerSaleCoordinator` | Core `Sales/` | Single entry point for the hooks; authority gate (single player host); policy-ready gate |
+| `PlayerSalesStatus` | Core `Sales/` | Status report ("Offer hook: Active" ...); "Enabled" only when everything is |
+| `PlayerSalesHost` | Game | Binds the coordinator to the active save, background persistence, status refresh |
+| `PlayerSalesPatches`, `GameSales`, `SalesSession` | Game `Sales/` (`GAME_PATCHES` only) | Exact-signature Harmony hooks, item/contract adapters with a validation cache, authority and pruning timers |
+
+`GAME_PATCHES` is defined only for the IL2CPP build when `S1RefsDir` contains `Assembly-CSharp.dll`. The
+patch module is registered through `PatchManager` (all-or-nothing): if any target is missing, every mod patch
+is removed and the status report says *Unavailable*.
+
 ## 7. Configuration and persistence strategy (Phase 02 / 06)
 
 - Implemented in Phase 02: **mod-owned JSON**, never inside vanilla save files, one file per save at
   `<game>/UserData/TakeItOrLeaveIt/saves/<save-id>.json`, where `<save-id>` is the Phase 01 hashed
-  `SaveIdentity` of the save folder. Schema: `{schemaVersion, enabled, defaultMode, categories:{key:{mode, selectedProducts[]}}}`.
+  `SaveIdentity` of the save folder. Schema: `{schemaVersion, enabled, defaultMode, mixedDeliveries, categories:{key:{mode, selectedProducts[]}}}`
+  (`mixedDeliveries` added in Phase 03, optional, default true).
+- Phase 03 adds `<save-id>.orders.json` next to it: the active category-order snapshots
+  (`{schemaVersion, orders:[{contract, category, requiredUnits, allowedProducts[], requestedProducts[], mixedDeliveries, policyRevision, committed}]}`).
 - Deferred to Phase 06: migrations beyond schema 1, global (non-save) settings, export/import, backups/rotation.
 - Selections reference stable product IDs. Unknown or locked IDs are treated as inactive and never unlocked.
 - MelonPreferences is not used: dynamic per-save product lists need our own file.
@@ -206,6 +243,9 @@ Menu initialization failure → the app shows "unavailable".
 - Clients receive the host's effective policy; client-side menus are read-only for host-owned rules.
 - RPC method names contain build-specific hashes, so they are never patch targets.
 - None of this is verified yet; OBS-05 in the patch map defines the first test.
+- Phase 03 verified (call graph) that customer handovers settle through a FishNet server RPC
+  (`ProcessHandoverServerSide`) and that acceptance checks `InstanceFinder.IsServer`. Until Phase 07, player
+  sales are active only on a server with at most one player; otherwise every hook defers to vanilla.
 
 ## 9. Key decisions
 
