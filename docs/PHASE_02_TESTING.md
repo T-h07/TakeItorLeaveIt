@@ -123,7 +123,44 @@ the list is paged at 40 rows to bound it).
 3. The JSON file(s) from `<Schedule I>/UserData/TakeItOrLeaveIt/saves/`.
 4. The PASS/FAIL/BLOCKED table above.
 
-## 8. Known limitations
+## 8. Layout fix (after the first physical test)
+
+First physical test (Schedule I v0.4.7f12 IL2CPP, S1API 3.2.3, MelonLoader 0.7.4): the app registered once,
+opened, the catalog reached Ready (5 weed products) and saving worked, but every scrolling area was clipped
+on both sides (Overview text, product rows, status labels, preview).
+
+**Root cause:** the scroll lists came from S1API's `UIFactory.ScrollableVerticalList`, which anchors the
+content to stretch horizontally but leaves Unity's default `sizeDelta` of (100, 100). The content was
+therefore 100 units wider than its masked viewport and centred, so 50 units were cut off on each side.
+Non-scrolling rows (tabs, modes, search) were unaffected, which matches the screenshots.
+
+**Fix:** our own scroll list (content width = viewport width, `RectMask2D` clipping); all regions placed in
+UI units from `MenuLayout`, which is computed from the container size S1API actually provides (re-measured
+when it changes) and unit-tested for viewports from 800x450 to 2560x1440; buttons and labels shrink to
+minimum widths and wrap instead of overflowing; the Products preview moves below the list when the body is
+too narrow for two columns.
+
+**Evidence in the log:** when the app first opens, and once per screen, it writes
+
+```text
+[TakeItOrLeaveIt] Phone app layout: viewport WxH, nav N, body WxH, list (...), preview (...), TwoColumns (canvas scale S).
+[TakeItOrLeaveIt] Layout check Overview (WxH): OK (N visible elements inside their areas)
+```
+
+Any element outside its area or any control too small to click is listed as a `Layout check ... problem(s)` warning.
+
+### Visual retest checklist
+
+1. Overview: the "OVERVIEW" heading, "Mod enabled for this save", "Active save", "Status" and the category card start fully inside the panel (no missing first letters); the ON/OFF button is fully visible.
+2. Products: each row shows the full check box, full name, effects and the full "Permitted" / "Not permitted" label at the right.
+3. Products: the preview panel shows "ELIGIBILITY PREVIEW", the headline and every line without cut-off letters on either side.
+4. Click every control once: nav buttons, Discard, Save, tabs, the three modes, search box, Select all unlocked, Select shown, Clear, a product row, Prev/Next.
+5. Type in search: the player does not move; close the phone: movement works again.
+6. Settings and Diagnostics: all text readable, long lines wrap inside the panel.
+7. Scroll the product list and the preview with the mouse wheel.
+8. Send the `Phone app layout` and `Layout check` lines from `Latest.log`, plus new screenshots of Overview and Products.
+
+## 9. Known limitations
 
 - The phone app exists only in IL2CPP builds made with local references. The Mono build and the CI artifact have no menu.
 - S1API creates the app on every phone home-screen start; S1API itself does not deduplicate icons. P02-T28 checks this.

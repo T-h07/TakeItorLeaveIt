@@ -170,6 +170,12 @@ and calls `OnCreatedUI(container)`. The newest instance becomes `Current`; `OnDe
 cannot accumulate handlers. While the search field has focus the app sets `S1API.Input.Controls.IsTyping`, and
 it releases it when focus is lost, the app closes, the phone closes or the app is destroyed.
 
+**Layout.** `MenuLayout` (Core, unit-tested) turns the measured container size into rectangles for the
+header, sidebar, body, Products header, list, pager and preview (two columns, or stacked when narrow). The app
+re-measures the container every frame it is open and re-places regions when the size changes. Scroll lists
+are built by `UiKit.ScrollList` (not S1API's `ScrollableVerticalList`, whose content is 100 units wider than
+its viewport). `LayoutProbe` logs a bounds check per screen and size.
+
 **Draft vs saved.** Every edit changes the draft only (the preview shows "Showing unsaved changes"). **Save**
 validates, writes the file and only then publishes the policy to `InMemoryPolicyProvider` and shows
 "Settings saved."; a failed write keeps the draft and shows the error. **Discard** restores the saved
