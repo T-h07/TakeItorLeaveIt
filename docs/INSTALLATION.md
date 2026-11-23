@@ -1,7 +1,8 @@
 # Installation (development build 0.0.1-dev)
 
-> Phase 00 build: it **only loads and logs**. It does not change customers, dealers, products, money,
-> XP or saves. In-game loading has **not been tested yet** (acceptance tests P00-T07/T08/T09 are pending).
+> Phase 01 build: it **only loads, discovers products and logs**. It does not change customers, dealers,
+> products, money, XP or saves. Phase 00 loading was verified on Schedule I v0.4.7f12 (IL2CPP); Phase 01
+> in-game steps are in [PHASE_01_TESTING.md](PHASE_01_TESTING.md).
 
 ## 1. Compatibility
 
@@ -35,17 +36,22 @@ same lines). Expected lines, in order (timestamps omitted):
 
 ```text
 [TakeItOrLeaveIt] Initializing...
-[TakeItOrLeaveIt] TakeItOrLeaveIt 0.0.1-dev by T-h07 - phase 00 - Foundation; build target: Il2Cpp.
+[TakeItOrLeaveIt] TakeItOrLeaveIt 0.0.1-dev by T-h07 - phase 01 - Product discovery and rule engine; build target: Il2Cpp.
 [TakeItOrLeaveIt] Game: 'Schedule I' by 'TVGS', version '<game version>', Unity <unity version>.
 [TakeItOrLeaveIt] MelonLoader 0.7.3; game runtime reported by loader: Il2Cpp.
 [TakeItOrLeaveIt] Runtime detected from game files: Il2Cpp.
 [TakeItOrLeaveIt]   evidence: ...
 [TakeItOrLeaveIt] Compatibility: Supported.
 [TakeItOrLeaveIt] MelonLoader integration initialized.
-[TakeItOrLeaveIt] No gameplay patches enabled in Phase 00.
+[TakeItOrLeaveIt] No gameplay patches enabled (Phase 01 is read-only).
+[TakeItOrLeaveIt] Product discovery initialized (read-only; polling save state about once per second).
 [TakeItOrLeaveIt] Initialization completed.
 [TakeItOrLeaveIt] Version 0.0.1-dev initialized successfully.
-[TakeItOrLeaveIt] Scene loaded: '<scene>' (index n). No gameplay changes in Phase 00.
+[TakeItOrLeaveIt] Phase 01 running in read-only mode: products are discovered and evaluated, nothing in the game is changed.
+[TakeItOrLeaveIt] Scene loaded: '<scene>' (index n). No gameplay changes in Phase 01.
+
+After loading a save, a `Product catalog: Ready` block lists the discovered products
+(see [PHASE_01_TESTING.md](PHASE_01_TESTING.md)).
 ```
 
 (`Mono` replaces `Il2Cpp` on the alternate branch.) Problems are reported as:
@@ -72,4 +78,4 @@ uninstall option or verify the game files in Steam.
 - In-game loading is untested; the `MelonGame` developer/name strings come from public S1API documentation.
 - Loading `TakeItOrLeaveIt.Core.dll` from `UserLibs` follows MelonLoader's documented layout but has not been observed yet.
   For the Mono build, Unity's Mono runtime must load a .NET Standard 2.0 library (normally supported; unverified for this game).
-- No gameplay features exist yet (by design for Phase 00).
+- No gameplay features exist yet (by design: Phase 01 is read-only).

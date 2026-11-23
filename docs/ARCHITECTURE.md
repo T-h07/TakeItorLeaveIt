@@ -1,6 +1,6 @@
 # Architecture
 
-Status: Phase 00 foundation. This file separates what exists in code from what is **planned**.
+Status: Phase 01 (product discovery & rule engine). This file separates what exists in code from what is **planned**.
 
 ## 1. Repository layout
 
@@ -64,7 +64,7 @@ Unity Mono for the `alternate` branch). net472 cannot consume netstandard2.1.
 | `StartupSequence` | Core | Runs named init steps; separates **unsupported environment** from **defect**; never throws to the loader |
 | `TakeItOrLeaveItMod` | Game | `MelonMod` entry: logs environment, runs compatibility checks, initializes Harmony, logs scene loads (once per load, never per frame) |
 | `MelonModLog` | Game | `IModLog` → `MelonLogger.Instance` (lines appear as `[TakeItOrLeaveIt] …`) |
-| `PatchManager`, `IPatchModule` | Game | Explicit, **all-or-nothing** patch application (`[assembly: HarmonyDontPatchAll]`). On failure it calls `UnpatchSelf()` so the game never runs half-patched. **Zero modules registered in Phase 00** |
+| `PatchManager`, `IPatchModule` | Game | Explicit, **all-or-nothing** patch application (`[assembly: HarmonyDontPatchAll]`). On failure it calls `UnpatchSelf()` so the game never runs half-patched. **Zero modules registered (Phase 00 and Phase 01)** |
 
 ## 4. Game adapter design (Phase 01+)
 
@@ -78,21 +78,24 @@ Unity Mono for the `alternate` branch). net472 cannot consume netstandard2.1.
   build" (see the Diagnostics screen in `MOD_MENU_SPEC.md`).
 - Only targets listed in [PATCH_MAP.md](PATCH_MAP.md) with confidence `verified` may be patched.
 
-## 5. Planned central eligibility engine (Phase 01)
+## 5. Central eligibility engine (implemented in Phase 01)
 
-One `SaleEligibilityPolicy` in Core, used by the menu preview, player handovers and dealer stock selection:
+Full description: [PRODUCT_DISCOVERY.md](PRODUCT_DISCOVERY.md).
 
-```text
-Inputs:  policy (per category: AnyUnlocked | SelectedOnly | Disabled, selections, flags)
-         discovered-product set (from the save, via adapter)
-         requested order (category + quantity [+ min quality])
-         offered/available stacks (product snapshot + quantity)
-Output:  decision (Accept / Reject) + reason (WrongCategory, NotUnlocked, ExcludedByPolicy,
-         InsufficientQuantity, CategoryDisabled, UnsupportedBuild) + allocation (which stacks, how many)
-```
+| Component | Location | Responsibility |
+| --- | --- | --- |
+| `ProductKey`, `CategoryKey`, `ProductDescriptor` | Core `Products/` | Stable identities (game ID, never display name), unlock state, recipe fingerprint |
+| `ProductCatalogService`, `ProductCatalogSnapshot` | Core `Discovery/` | Per-save immutable catalog; `NoSave / Loading / Ready / Failed / Unsupported`; stale results discarded |
+| `SaveLifecycleCoordinator`, `SaveIdentity` | Core `Discovery/` | Save transitions from observations; hashed save identity |
+| `PolicyConfiguration`, `CategoryPolicy`, `IPolicyProvider` | Core `Policies/` | Validated, immutable, revisioned rules (AnyUnlocked default) |
+| `SaleEligibilityPolicy` | Core `Policies/` | The single rule set with machine-readable `EligibilityReason`s |
+| `InventoryAllocationPlanner` | Core `Inventory/` | Deterministic, non-mutating stack allocation |
+| `GameProductDiscoverySource`, `GameSaveProbe`, `ProductDiscoveryRuntime` | Game `Discovery/` | Read-only reflection adapter, polled about once per second |
 
-It is pure and deterministic: no game calls and no side effects, so it is fully unit-testable. The game adapters only
-supply snapshots and apply the result through **vanilla** completion paths (exactly-once payment/XP/inventory).
+Everything in Core is pure and deterministic: no game calls and no side effects, so it is fully unit-testable.
+The Phase 01 game adapter uses **runtime reflection** (`Il2Cpp`-prefixed name first, then the Mono name),
+which compiles without game assemblies and fails closed when a member is missing. Later phases apply
+results only through **vanilla** completion paths (exactly-once payment/XP/inventory).
 
 ## 6. In-game menu: S1API evaluation (Phase 02 recommendation)
 
