@@ -83,7 +83,21 @@ internal static class UiKit
         return layout;
     }
 
-    public static LayoutElement Size(GameObject go, float preferredWidth = -1f, float preferredHeight = -1f, float flexibleWidth = -1f, float minHeight = -1f)
+    /// <summary>
+    /// Places <paramref name="go"/> at an exact rectangle of its parent (top-left origin, UI units). Used for all
+    /// top-level regions, computed by <see cref="TakeItOrLeaveIt.Core.Menu.MenuLayout"/> from the measured container.
+    /// </summary>
+    public static void Place(GameObject go, TakeItOrLeaveIt.Core.Menu.UiRect r)
+    {
+        var rt = go.GetComponent<RectTransform>();
+        rt.anchorMin = new Vector2(0f, 1f);
+        rt.anchorMax = new Vector2(0f, 1f);
+        rt.pivot = new Vector2(0f, 1f);
+        rt.anchoredPosition = new Vector2(r.X, -r.Y);
+        rt.sizeDelta = new Vector2(r.Width, r.Height);
+    }
+
+    public static LayoutElement Size(GameObject go, float preferredWidth = -1f, float preferredHeight = -1f, float flexibleWidth = -1f, float minHeight = -1f, float minWidth = -1f)
     {
         var element = go.GetComponent<LayoutElement>();
         if (element == null)
@@ -95,6 +109,7 @@ internal static class UiKit
         element.preferredHeight = preferredHeight;
         element.flexibleWidth = flexibleWidth;
         element.minHeight = minHeight;
+        element.minWidth = minWidth;
         return element;
     }
 
@@ -107,14 +122,24 @@ internal static class UiKit
         return label;
     }
 
-    /// <summary>A flat button with a centred label. Returns the button and its label.</summary>
-    public static (Button Button, Text Label) Button(Transform parent, string text, Color color, float width, float height, Action onClick, int fontSize = 15)
+    /// <summary>
+    /// A flat button with a centred label. Returns the button and its label. In a horizontal layout it takes
+    /// <paramref name="width"/> when there is room and shrinks to <paramref name="minWidth"/> (label wraps) when not.
+    /// </summary>
+    public static (Button Button, Text Label) Button(Transform parent, string text, Color color, float width, float height, Action onClick, int fontSize = 15, float minWidth = -1f)
     {
         var (go, button, label) = UIFactory.ButtonWithLabel("Button", text, parent, color, width, height);
         label.fontSize = fontSize;
         label.color = Theme.Text;
         label.raycastTarget = false;
-        Size(go, width, height);
+        label.horizontalOverflow = HorizontalWrapMode.Wrap;
+        label.verticalOverflow = VerticalWrapMode.Truncate;
+        var labelRt = label.GetComponent<RectTransform>();
+        labelRt.anchorMin = Vector2.zero;
+        labelRt.anchorMax = Vector2.one;
+        labelRt.offsetMin = new Vector2(6f, 0f);
+        labelRt.offsetMax = new Vector2(-6f, 0f);
+        Size(go, width, height, -1f, height, minWidth < 0f ? width : minWidth);
         ButtonUtils.AddListener(button, onClick);
         return (button, label);
     }
@@ -131,21 +156,46 @@ internal static class UiKit
         }
     }
 
-    /// <summary>A vertical scroll list filling <paramref name="parent"/>; returns the content transform.</summary>
+    /// <summary>
+    /// A vertical scroll list filling <paramref name="parent"/>; returns the content transform.
+    /// <para>Built here instead of with S1API's <c>UIFactory.ScrollableVerticalList</c>: that helper anchors the
+    /// content to stretch horizontally but leaves Unity's default <c>sizeDelta</c> of (100, 100), so the content
+    /// is 100 units wider than the viewport and centred, and the mask cuts 50 units off each side. Here the
+    /// content's width equals the viewport's (sizeDelta.x = 0) and its height comes from the layout.</para>
+    /// </summary>
     public static Transform ScrollList(Transform parent, out ScrollRect scroll)
     {
-        var content = UIFactory.ScrollableVerticalList("Scroll", parent, out scroll);
+        var root = Node("Scroll", parent);
+        Stretch(root);
+        scroll = root.AddComponent<ScrollRect>();
+        scroll.horizontal = false;
+        scroll.vertical = true;
         scroll.scrollSensitivity = 28f;
         scroll.movementType = ScrollRect.MovementType.Clamped;
-        var layout = content.GetComponent<VerticalLayoutGroup>();
-        if (layout != null)
-        {
-            layout.spacing = 6f;
-            layout.padding = new RectOffset(8, 8, 8, 8);
-            layout.childControlWidth = true;
-            layout.childForceExpandWidth = true;
-        }
+        scroll.inertia = false;
 
+        var viewport = Node("Viewport", root.transform);
+        Stretch(viewport);
+        viewport.AddComponent<RectMask2D>();
+        // Transparent graphic so scrolling with the wheel / drag also works over empty space.
+        var hit = viewport.AddComponent<Image>();
+        hit.color = new Color(0f, 0f, 0f, 0f);
+        scroll.viewport = viewport.GetComponent<RectTransform>();
+
+        var content = Node("Content", viewport.transform);
+        var rt = content.GetComponent<RectTransform>();
+        rt.anchorMin = new Vector2(0f, 1f);
+        rt.anchorMax = new Vector2(1f, 1f);
+        rt.pivot = new Vector2(0.5f, 1f);
+        rt.anchoredPosition = Vector2.zero;
+        rt.sizeDelta = Vector2.zero;
+        var layout = VStack(content, 6f, 8);
+        layout.childControlWidth = true;
+        layout.childForceExpandWidth = true;
+        var fitter = content.AddComponent<ContentSizeFitter>();
+        fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        scroll.content = rt;
         return content.transform;
     }
 

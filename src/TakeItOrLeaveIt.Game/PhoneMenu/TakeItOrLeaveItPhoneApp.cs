@@ -22,29 +22,39 @@ namespace TakeItOrLeaveIt.Game.PhoneMenu;
 /// </summary>
 public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
 {
-    private const float NavWidth = 0.2f;
-    private const float TopBarHeight = 0.11f;
-
     private ModMenuController? _menu;
     private long _renderedVersion = -1;
     private bool _built;
     private bool _wasOpen;
     private bool _claimedTyping;
 
+    // Measured layout (see MenuLayout in Core). Regions are placed in UI units of the container S1API gives us.
+    private RectTransform _rootRect = null!;
+    private Vector2 _laidOutSize = new(-1f, -1f);
+    private MenuLayoutPlan? _plan;
+    private string? _lastProbeKey;
+    private static int _probeLogs;
+
     // Persistent chrome
+    private GameObject _topBar = null!;
+    private GameObject _navPanel = null!;
+    private GameObject _body = null!;
     private Text _status = null!;
     private Button _saveButton = null!;
     private Text _saveLabel = null!;
     private Button _discardButton = null!;
     private Text _discardLabel = null!;
     private readonly (Button Button, Text Label, MenuScreen Screen)[] _nav = new (Button, Text, MenuScreen)[4];
-    private Text _footer = null!;
 
     // Screens
     private GameObject _listScreen = null!;
     private Transform _listContent = null!;
     private ScrollRect _listScroll = null!;
     private GameObject _productsScreen = null!;
+    private GameObject _productsHeader = null!;
+    private GameObject _listPanel = null!;
+    private GameObject _pagerPanel = null!;
+    private GameObject _previewPanel = null!;
     private Transform _tabs = null!;
     private Transform _modes = null!;
     private Text _modeDescription = null!;
@@ -64,6 +74,7 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
     private Button _nextButton = null!;
     private Text _nextLabel = null!;
     private Transform _preview = null!;
+    private ScrollRect _previewScroll = null!;
     private MenuScreen _lastScreen = (MenuScreen)(-1);
     private CategoryKey _lastCategory;
 
@@ -92,7 +103,7 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
         try
         {
             Build(container);
-            _built = true;
+            _built = _menu is not null;
             _renderedVersion = -1;
         }
         catch (Exception ex)
@@ -144,10 +155,26 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
 
         _wasOpen = true;
         UpdateTyping();
+
+        // The container's real size is only known once the phone has laid it out; re-measure every frame
+        // (two float compares) and re-place all regions when it changes (resolution / UI scale changes).
+        var size = _rootRect.rect.size;
+        if (size.x > 1f && size.y > 1f && (Mathf.Abs(size.x - _laidOutSize.x) > 0.5f || Mathf.Abs(size.y - _laidOutSize.y) > 0.5f))
+        {
+            ApplyLayout(size);
+            _renderedVersion = -1;
+        }
+
+        if (_plan is null)
+        {
+            return;
+        }
+
         if (_menu.ViewVersion != _renderedVersion)
         {
             _renderedVersion = _menu.ViewVersion;
             Render();
+            ProbeLayout();
         }
     }
 
@@ -157,6 +184,7 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
     {
         var root = UiKit.Panel("TIOL_Root", container.transform, Theme.Background);
         UiKit.Stretch(root);
+        _rootRect = root.GetComponent<RectTransform>();
 
         if (_menu is null)
         {
@@ -168,108 +196,171 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
         BuildTopBar(root.transform);
         BuildNav(root.transform);
 
-        var body = UiKit.Node("Body", root.transform);
-        UiKit.Anchor(body, NavWidth, 0f, 1f, 1f - TopBarHeight);
+        // Body clips its children so nothing can ever draw over the header or sidebar.
+        _body = UiKit.Node("Body", root.transform);
+        _body.AddComponent<RectMask2D>();
 
-        _listScreen = UiKit.Node("ListScreen", body.transform);
-        UiKit.Stretch(_listScreen, 6f);
+        _listScreen = UiKit.Node("ListScreen", _body.transform);
         _listContent = UiKit.ScrollList(_listScreen.transform, out _listScroll);
 
-        BuildProductsScreen(body.transform);
+        BuildProductsScreen(_body.transform);
+    }
+
+    /// <summary>Places every region from <see cref="MenuLayout"/> for the measured container size.</summary>
+    private void ApplyLayout(Vector2 size)
+    {
+        var plan = MenuLayout.Compute(size.x, size.y);
+        _plan = plan;
+        _laidOutSize = size;
+        _lastProbeKey = null;
+
+        UiKit.Place(_topBar, plan.Header);
+        UiKit.Place(_navPanel, plan.Nav);
+        UiKit.Place(_body, plan.Body);
+        UiKit.Place(_listScreen, plan.BodyContent);
+        UiKit.Stretch(_productsScreen);
+        UiKit.Place(_productsHeader, plan.ProductsHeader);
+        UiKit.Place(_listPanel, plan.ProductList);
+        UiKit.Place(_pagerPanel, plan.Pager);
+        UiKit.Place(_previewPanel, plan.Preview);
+
+        var scale = _rootRect.lossyScale.x;
+        MelonLoader.MelonLogger.Msg($"[TakeItOrLeaveIt] Phone app layout: {plan} (canvas scale {scale:0.###}).");
+        if (size.x < MenuLayout.MinUsableWidth || size.y < MenuLayout.MinUsableHeight)
+        {
+            MelonLoader.MelonLogger.Warning($"[TakeItOrLeaveIt] Phone app viewport {size.x:0}x{size.y:0} is smaller than the designed minimum {MenuLayout.MinUsableWidth:0}x{MenuLayout.MinUsableHeight:0}; some areas will be cramped.");
+        }
     }
 
     private void BuildTopBar(Transform root)
     {
-        var bar = UiKit.Panel("TopBar", root, Theme.Surface);
-        UiKit.Anchor(bar, 0f, 1f - TopBarHeight, 1f, 1f);
-        UiKit.HStack(bar, 14f, 10);
+        _topBar = UiKit.Panel("TopBar", root, Theme.Surface);
+        UiKit.HStack(_topBar, 12f, 8);
 
-        var title = UiKit.Label(bar.transform, "TAKE IT OR LEAVE IT", Theme.TitleSize, Theme.Text, FontStyle.Bold);
-        UiKit.Size(title.gameObject, 300f);
-        var version = UiKit.Label(bar.transform, "v" + ModInfo.Version, Theme.SmallSize, Theme.TextFaint);
-        UiKit.Size(version.gameObject, 90f);
+        var title = UiKit.Label(_topBar.transform, "TAKE IT OR LEAVE IT", 20, Theme.Text, FontStyle.Bold);
+        title.verticalOverflow = VerticalWrapMode.Truncate;
+        UiKit.Size(title.gameObject, 250f, -1f, -1f, -1f, 150f);
+        var version = UiKit.Label(_topBar.transform, "v" + ModInfo.Version, Theme.SmallSize, Theme.TextFaint);
+        version.verticalOverflow = VerticalWrapMode.Truncate;
+        UiKit.Size(version.gameObject, 80f, -1f, -1f, -1f, 0f);
 
-        _status = UiKit.Label(bar.transform, string.Empty, Theme.SmallSize, Theme.TextMuted);
-        UiKit.Size(_status.gameObject, -1f, -1f, 1f);
+        _status = UiKit.Label(_topBar.transform, string.Empty, Theme.SmallSize, Theme.TextMuted);
+        _status.verticalOverflow = VerticalWrapMode.Truncate;
+        UiKit.Size(_status.gameObject, -1f, -1f, 1f, -1f, 80f);
 
-        (_discardButton, _discardLabel) = UiKit.Button(bar.transform, "Discard", Theme.SurfaceRaised, 110f, 40f, () => _menu!.Discard());
-        (_saveButton, _saveLabel) = UiKit.Button(bar.transform, "Save", Theme.Accent, 110f, 40f, () => _menu!.Save());
+        (_discardButton, _discardLabel) = UiKit.Button(_topBar.transform, "Discard", Theme.SurfaceRaised, 100f, 38f, () => _menu!.Discard(), 15, 76f);
+        (_saveButton, _saveLabel) = UiKit.Button(_topBar.transform, "Save", Theme.Accent, 100f, 38f, () => _menu!.Save(), 15, 76f);
     }
 
     private void BuildNav(Transform root)
     {
-        var nav = UiKit.Panel("Nav", root, Theme.Surface);
-        UiKit.Anchor(nav, 0f, 0f, NavWidth, 1f - TopBarHeight);
-        UiKit.VStack(nav, 8f, 12);
+        _navPanel = UiKit.Panel("Nav", root, Theme.Surface);
+        UiKit.VStack(_navPanel, 8f, 10);
+        _navPanel.AddComponent<RectMask2D>();
 
         var screens = new[] { MenuScreen.Overview, MenuScreen.Products, MenuScreen.Settings, MenuScreen.Diagnostics };
         for (var i = 0; i < screens.Length; i++)
         {
             var screen = screens[i];
-            var (button, label) = UiKit.Button(nav.transform, screen.ToString(), Theme.SurfaceRaised, -1f, 46f, () => OpenScreen(screen), 17);
+            var (button, label) = UiKit.Button(_navPanel.transform, screen.ToString(), Theme.SurfaceRaised, -1f, 42f, () => OpenScreen(screen), 16, 0f);
             label.alignment = TextAnchor.MiddleLeft;
-            label.GetComponent<RectTransform>().offsetMin = new Vector2(16f, 0f);
+            var rt = label.GetComponent<RectTransform>();
+            rt.offsetMin = new Vector2(12f, 0f);
+            rt.offsetMax = new Vector2(-6f, 0f);
             _nav[i] = (button, label, screen);
         }
 
-        var spacer = UiKit.Node("Spacer", nav.transform);
-        UiKit.Size(spacer, -1f, -1f, -1f).flexibleHeight = 1f;
-        _footer = UiKit.Label(nav.transform, MenuText.SalesNotice, Theme.SmallSize, Theme.TextFaint);
+        var spacer = UiKit.Node("Spacer", _navPanel.transform);
+        UiKit.Size(spacer).flexibleHeight = 1f;
+        UiKit.Label(_navPanel.transform, MenuText.SalesNotice, 13, Theme.TextFaint, anchor: TextAnchor.LowerLeft);
     }
 
     private void BuildProductsScreen(Transform body)
     {
         _productsScreen = UiKit.Node("ProductsScreen", body);
-        UiKit.Stretch(_productsScreen);
 
-        // Header: category tabs, mode buttons, search + bulk actions, summary.
-        var header = UiKit.Node("Header", _productsScreen.transform);
-        UiKit.Anchor(header, 0f, 0.6f, 1f, 1f);
-        UiKit.VStack(header, 8f, 10);
+        // Header: category tabs, mode buttons, description, search + bulk actions, summary.
+        // Its height is MenuLayout.ProductsHeaderHeight; it clips rather than drawing over the list.
+        _productsHeader = UiKit.Node("Header", _productsScreen.transform);
+        UiKit.VStack(_productsHeader, 6f, 0);
+        _productsHeader.AddComponent<RectMask2D>();
 
-        var tabs = UiKit.Node("Tabs", header.transform);
+        var tabs = UiKit.Node("Tabs", _productsHeader.transform);
         UiKit.HStack(tabs, 6f, 0);
-        UiKit.Size(tabs, -1f, 40f);
+        UiKit.Size(tabs, -1f, 36f, -1f, 36f);
         _tabs = tabs.transform;
 
-        var modes = UiKit.Node("Modes", header.transform);
+        var modes = UiKit.Node("Modes", _productsHeader.transform);
         UiKit.HStack(modes, 6f, 0);
-        UiKit.Size(modes, -1f, 40f);
+        UiKit.Size(modes, -1f, 36f, -1f, 36f);
         _modes = modes.transform;
 
-        _modeDescription = UiKit.Label(header.transform, string.Empty, Theme.SmallSize, Theme.TextMuted);
+        _modeDescription = UiKit.Label(_productsHeader.transform, string.Empty, Theme.SmallSize, Theme.TextMuted);
 
-        var searchRow = UiKit.Node("SearchRow", header.transform);
+        var searchRow = UiKit.Node("SearchRow", _productsHeader.transform);
         UiKit.HStack(searchRow, 6f, 0);
-        UiKit.Size(searchRow, -1f, 40f);
-        _search = UiKit.TextField(searchRow.transform, "Search products, effects or IDs...", ProductSearch.MaxQueryLength);
+        UiKit.Size(searchRow, -1f, 38f, -1f, 38f);
+        _search = UiKit.TextField(searchRow.transform, "Search name, effect or ID...", ProductSearch.MaxQueryLength);
+        UiKit.Size(_search.gameObject, -1f, 38f, 1f, 38f, 120f);
         EventHelper.AddListener<string>(OnSearchChanged, _search.onValueChanged);
-        (_selectAllButton, _selectAllLabel) = UiKit.Button(searchRow.transform, "Select all unlocked", Theme.SurfaceRaised, 170f, 40f,
-            () => _menu!.SelectAllUnlocked(_menu.SelectedCategory), 14);
-        (_selectVisibleButton, _selectVisibleLabel) = UiKit.Button(searchRow.transform, "Select shown", Theme.SurfaceRaised, 120f, 40f,
-            () => _menu!.SelectAllVisible(), 14);
-        (_clearButton, _clearLabel) = UiKit.Button(searchRow.transform, "Clear", Theme.SurfaceRaised, 80f, 40f,
-            () => _menu!.ClearSelection(_menu.SelectedCategory), 14);
+        (_selectAllButton, _selectAllLabel) = UiKit.Button(searchRow.transform, "Select all unlocked", Theme.SurfaceRaised, 160f, 38f,
+            () => _menu!.SelectAllUnlocked(_menu.SelectedCategory), 14, 96f);
+        (_selectVisibleButton, _selectVisibleLabel) = UiKit.Button(searchRow.transform, "Select shown", Theme.SurfaceRaised, 120f, 38f,
+            () => _menu!.SelectAllVisible(), 14, 80f);
+        (_clearButton, _clearLabel) = UiKit.Button(searchRow.transform, "Clear", Theme.SurfaceRaised, 80f, 38f,
+            () => _menu!.ClearSelection(_menu.SelectedCategory), 14, 60f);
 
-        _productSummary = UiKit.Label(header.transform, string.Empty, Theme.BodySize, Theme.Text);
+        _productSummary = UiKit.Label(_productsHeader.transform, string.Empty, 15, Theme.Text);
 
-        // Product list (left) with pager, preview (right).
-        var list = UiKit.Panel("List", _productsScreen.transform, Theme.Surface);
-        UiKit.Anchor(list, 0f, 0.08f, 0.62f, 0.6f, 6f);
-        _rows = UiKit.ScrollList(list.transform, out _rowsScroll);
+        _listPanel = UiKit.Panel("List", _productsScreen.transform, Theme.Surface);
+        _rows = UiKit.ScrollList(_listPanel.transform, out _rowsScroll);
 
-        var pager = UiKit.Node("Pager", _productsScreen.transform);
-        UiKit.Anchor(pager, 0f, 0f, 0.62f, 0.08f, 4f);
-        UiKit.HStack(pager, 8f, 0, TextAnchor.MiddleCenter);
-        (_prevButton, _prevLabel) = UiKit.Button(pager.transform, "< Prev", Theme.SurfaceRaised, 90f, 34f, () => _menu!.PreviousPage(), 14);
-        _pageLabel = UiKit.Label(pager.transform, string.Empty, Theme.SmallSize, Theme.TextMuted, anchor: TextAnchor.MiddleCenter);
-        UiKit.Size(_pageLabel.gameObject, 220f);
-        (_nextButton, _nextLabel) = UiKit.Button(pager.transform, "Next >", Theme.SurfaceRaised, 90f, 34f, () => _menu!.NextPage(), 14);
+        _pagerPanel = UiKit.Node("Pager", _productsScreen.transform);
+        UiKit.HStack(_pagerPanel, 8f, 0, TextAnchor.MiddleCenter);
+        (_prevButton, _prevLabel) = UiKit.Button(_pagerPanel.transform, "< Prev", Theme.SurfaceRaised, 90f, 32f, () => _menu!.PreviousPage(), 14, 70f);
+        _pageLabel = UiKit.Label(_pagerPanel.transform, string.Empty, Theme.SmallSize, Theme.TextMuted, anchor: TextAnchor.MiddleCenter);
+        UiKit.Size(_pageLabel.gameObject, 220f, -1f, -1f, -1f, 90f);
+        (_nextButton, _nextLabel) = UiKit.Button(_pagerPanel.transform, "Next >", Theme.SurfaceRaised, 90f, 32f, () => _menu!.NextPage(), 14, 70f);
 
-        var preview = UiKit.Panel("Preview", _productsScreen.transform, Theme.Surface);
-        UiKit.Anchor(preview, 0.62f, 0f, 1f, 0.6f, 6f);
-        _preview = UiKit.ScrollList(preview.transform, out _);
+        _previewPanel = UiKit.Panel("Preview", _productsScreen.transform, Theme.Surface);
+        _preview = UiKit.ScrollList(_previewPanel.transform, out _previewScroll);
     }
+
+    /// <summary>
+    /// Runtime bounds check written to the log once per screen and size: every visible element must lie
+    /// horizontally inside its clipping parent (and fully inside it outside scroll areas), and every button
+    /// must have a usable size. This is the evidence for the physical layout retest.
+    /// </summary>
+    private void ProbeLayout()
+    {
+        var menu = _menu!;
+        var key = $"{menu.Screen}|{_laidOutSize.x:0}x{_laidOutSize.y:0}";
+        if (key == _lastProbeKey || _probeLogs >= 40)
+        {
+            return;
+        }
+
+        _lastProbeKey = key;
+        _probeLogs++;
+        try
+        {
+            var result = LayoutProbe.Check(_rootRect);
+            var text = $"[TakeItOrLeaveIt] Layout check {menu.Screen} ({_laidOutSize.x:0}x{_laidOutSize.y:0}): {result.Summary}";
+            if (result.Problems.Count == 0)
+            {
+                MelonLoader.MelonLogger.Msg(text);
+            }
+            else
+            {
+                MelonLoader.MelonLogger.Warning(text + Environment.NewLine + "  " + string.Join(Environment.NewLine + "  ", result.Problems));
+            }
+        }
+        catch (Exception ex)
+        {
+            MelonLoader.MelonLogger.Warning($"[TakeItOrLeaveIt] Layout check failed: {ex.Message}");
+        }
+    }
+
 
     // --------------------------------------------------------------- rendering
 
@@ -351,8 +442,8 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
         Heading(c, "Overview");
 
         var toggleRow = Row(c, 48f);
-        UiKit.Label(toggleRow.transform, "Mod enabled for this save", Theme.BodySize, Theme.Text).gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
-        var (toggle, toggleLabel) = UiKit.Button(toggleRow.transform, string.Empty, Theme.SurfaceRaised, 110f, 38f, () => menu.SetModEnabled(!menu.IsModEnabled));
+        UiKit.Size(UiKit.Label(toggleRow.transform, "Mod enabled for this save", Theme.BodySize, Theme.Text).gameObject, -1f, -1f, 1f, -1f, 0f);
+        var (toggle, toggleLabel) = UiKit.Button(toggleRow.transform, string.Empty, Theme.SurfaceRaised, 100f, 36f, () => menu.SetModEnabled(!menu.IsModEnabled), 15, 80f);
         UiKit.SetButton(toggle, toggleLabel, menu.IsModEnabled ? "ON" : "OFF", menu.IsModEnabled ? Theme.Accent : Theme.DangerMuted, menu.CanEdit);
 
         Line(c, menu.ActiveSaveLabel is null ? "Active save: none" : $"Active save: {menu.ActiveSaveLabel}", Theme.TextMuted);
@@ -401,9 +492,9 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
         Line(c, "Settings are stored per save in UserData/TakeItOrLeaveIt/saves. Game saves are never modified.", Theme.TextMuted, Theme.SmallSize);
 
         var row = Row(c, 48f);
-        var (save, saveLabel) = UiKit.Button(row.transform, string.Empty, Theme.Accent, 150f, 40f, () => menu.Save());
+        var (save, saveLabel) = UiKit.Button(row.transform, string.Empty, Theme.Accent, 150f, 38f, () => menu.Save(), 15, 110f);
         UiKit.SetButton(save, saveLabel, "Save changes", Theme.Accent, menu.CanEdit && menu.HasUnsavedChanges);
-        var (discard, discardLabel) = UiKit.Button(row.transform, string.Empty, Theme.SurfaceRaised, 160f, 40f, () => menu.Discard());
+        var (discard, discardLabel) = UiKit.Button(row.transform, string.Empty, Theme.SurfaceRaised, 160f, 38f, () => menu.Discard(), 15, 110f);
         UiKit.SetButton(discard, discardLabel, "Discard changes", Theme.SurfaceRaised, menu.HasUnsavedChanges);
 
         Heading(c, "Reset");
@@ -454,7 +545,7 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
         foreach (var category in menu.GetCategories())
         {
             var key = category.Key;
-            var (tab, label) = UiKit.Button(_tabs, category.DisplayName, Theme.SurfaceRaised, 130f, 38f, () => menu.SelectCategory(key), 15);
+            var (tab, label) = UiKit.Button(_tabs, category.DisplayName, Theme.SurfaceRaised, 120f, 36f, () => menu.SelectCategory(key), 14, 64f);
             UiKit.SetButton(tab, label, category.DisplayName, key == menu.SelectedCategory ? Theme.AccentMuted : Theme.SurfaceRaised, true);
         }
 
@@ -464,7 +555,7 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
         foreach (var mode in new[] { PolicyMode.AnyUnlocked, PolicyMode.SelectedOnly, PolicyMode.Disabled })
         {
             var m = mode;
-            var (button, label) = UiKit.Button(_modes, MenuText.ModeLabel(m), Theme.SurfaceRaised, 150f, 38f, () => menu.SetMode(menu.SelectedCategory, m), 15);
+            var (button, label) = UiKit.Button(_modes, MenuText.ModeLabel(m), Theme.SurfaceRaised, 140f, 36f, () => menu.SetMode(menu.SelectedCategory, m), 14, 96f);
             var active = summary is not null && summary.Mode == m;
             UiKit.SetButton(button, label, MenuText.ModeLabel(m), active ? Theme.Accent : Theme.SurfaceRaised, editable);
         }
@@ -510,7 +601,7 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
             var key = row.Key;
             var panel = UiKit.Panel("Row", _rows, row.IsSelectable ? Theme.SurfaceRaised : Theme.Surface);
             UiKit.HStack(panel, 10f, 8);
-            UiKit.Size(panel, -1f, 52f);
+            UiKit.Size(panel, -1f, -1f, -1f, 52f);
             var button = panel.AddComponent<Button>();
             button.targetGraphic = panel.GetComponent<Image>();
             button.interactable = menu.CanEdit && (row.IsSelectable || row.IsSelected);
@@ -522,12 +613,12 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
 
             var texts = UiKit.Node("Texts", panel.transform);
             UiKit.VStack(texts, 0f, 0);
-            UiKit.Size(texts, -1f, -1f, 1f);
+            UiKit.Size(texts, -1f, -1f, 1f, -1f, 100f);
             UiKit.Label(texts.transform, row.DisplayName, Theme.BodySize, row.IsSelectable ? Theme.Text : Theme.TextFaint, FontStyle.Bold);
             UiKit.Label(texts.transform, row.Detail, Theme.SmallSize, Theme.TextFaint);
 
             var status = UiKit.Label(panel.transform, row.StatusLabel, Theme.SmallSize, row.IsEligible ? Theme.Success : Theme.TextMuted, anchor: TextAnchor.MiddleRight);
-            UiKit.Size(status.gameObject, 150f);
+            UiKit.Size(status.gameObject, 130f, -1f, -1f, -1f, 80f);
         }
 
         if (page.Rows.Count == 0)
