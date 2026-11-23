@@ -1,0 +1,27 @@
+<Project>
+  <!--
+    Shared settings for every project in the solution.
+    Machine-specific values (game install path, auto-deploy) belong in local.build.props,
+    which is git-ignored. See local.build.props.example and docs/BUILDING.md.
+  -->
+  <Import Project="$(MSBuildThisFileDirectory)local.build.props" Condition="Exists('$(MSBuildThisFileDirectory)local.build.props')" />
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <Deterministic>true</Deterministic>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- CS1591: missing XML docs on public members. Docs are encouraged, not mandatory. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <Authors>T-h07</Authors>
+    <Product>TakeItOrLeaveIt</Product>
+    <!-- Single source of truth for the mod version. ModInfo.Version must match (checked by a unit test). -->
+    <Version>0.0.1</Version>
+    <InformationalVersion>0.0.1-dev</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+</Project>
