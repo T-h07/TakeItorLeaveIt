@@ -19,6 +19,13 @@ internal static class Program
 {
     private static int Main(string[] args)
     {
+        var xrefDir = GetArg(args, "--xref");
+        if (xrefDir is not null)
+        {
+            return XrefReport.Run(xrefDir, GetArg(args, "--types") ?? string.Empty, GetArg(args, "--methods"),
+                GetArg(args, "--out") ?? Path.Combine(Directory.GetCurrentDirectory(), "xref.md"));
+        }
+
         var game = GetArg(args, "--game");
         var output = GetArg(args, "--out") ?? Path.Combine(Directory.GetCurrentDirectory(), "inspection-output");
         if (game is null || !Directory.Exists(game))
