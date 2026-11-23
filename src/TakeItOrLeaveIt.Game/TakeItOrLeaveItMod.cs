@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using MelonLoader;
 using MelonLoader.InternalUtils;
 using MelonLoader.Utils;
@@ -6,6 +7,8 @@ using TakeItOrLeaveIt.Core;
 using TakeItOrLeaveIt.Core.Compatibility;
 using TakeItOrLeaveIt.Core.Diagnostics;
 using TakeItOrLeaveIt.Core.Environment;
+using TakeItOrLeaveIt.Core.Menu;
+using TakeItOrLeaveIt.Core.Persistence;
 using TakeItOrLeaveIt.Core.Policies;
 using TakeItOrLeaveIt.Game;
 using TakeItOrLeaveIt.Game.Diagnostics;
@@ -22,8 +25,8 @@ using TakeItOrLeaveIt.Game.Patching;
 namespace TakeItOrLeaveIt.Game;
 
 /// <summary>
-/// MelonLoader entry point. Phase 01: diagnostics, Harmony infrastructure (no patches) and read-only
-/// product discovery. It does NOT change any gameplay (customers, dealers, products, inventory, money, XP, saves).
+/// MelonLoader entry point. Phase 02: diagnostics, Harmony infrastructure (no patches), read-only
+/// product discovery and the mod menu (S1API phone app) with per-save settings. It does NOT change any gameplay (customers, dealers, products, inventory, money, XP, saves).
 /// </summary>
 public sealed class TakeItOrLeaveItMod : MelonMod
 {
@@ -31,8 +34,12 @@ public sealed class TakeItOrLeaveItMod : MelonMod
     private PatchManager? _patches;
     private ProductDiscoveryRuntime? _discovery;
 
-    /// <summary>Phase 01 uses the default policy (AnyUnlocked everywhere); Phase 06 adds persistence and the menu.</summary>
+    /// <summary>Saved policy of the active save; published by the menu controller after each successful save.</summary>
     private readonly InMemoryPolicyProvider _policies = new();
+    private ModMenuController? _menu;
+
+    /// <summary>Menu state for the in-game UI (null if initialization failed).</summary>
+    internal static ModMenuController? Menu { get; private set; }
 
     /// <summary>True when initialization completed and gameplay features may be enabled.</summary>
     public static bool IsOperational { get; private set; }
@@ -55,6 +62,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
                 _patches.ApplyAll();
             })
             .Step("Product discovery (read-only)", () => _discovery = new ProductDiscoveryRuntime(_log, _policies))
+            .Step("Mod menu settings", CreateMenu)
             .Run();
 
         IsOperational = outcome == StartupOutcome.Succeeded;
@@ -69,7 +77,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
                 }
 
                 _log.Info(ModInfo.InitializedMessage);
-                _log.Info("Phase 01 running in read-only mode: products are discovered and evaluated, nothing in the game is changed.");
+                _log.Info("Phase 02: product discovery, mod menu and per-save settings. Sales are not changed yet (Phases 03/04).");
                 break;
             case StartupOutcome.UnsupportedEnvironment:
                 _log.Error("Initialization stopped: unsupported environment. The mod is inactive; the game is unaffected.");
@@ -85,7 +93,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
         // One line per scene load (not per frame): confirms the mod survives into gameplay scenes.
         if (IsOperational)
         {
-            _log.Info($"Scene loaded: '{sceneName}' (index {buildIndex}). No gameplay changes in Phase 01.");
+            _log.Info($"Scene loaded: '{sceneName}' (index {buildIndex}). No gameplay changes in Phase 02.");
             _discovery?.PollNow();
         }
     }
@@ -96,14 +104,80 @@ public sealed class TakeItOrLeaveItMod : MelonMod
         if (IsOperational)
         {
             _discovery?.Tick();
+            TickPhoneMenu();
         }
+    }
+
+    private bool _phoneMenuChecked;
+#if PHONE_APP
+    private bool _phoneMenuDisabled;
+#endif
+
+    /// <summary>Drives the S1API phone app (IL2CPP builds made with local references only).</summary>
+    private void TickPhoneMenu()
+    {
+#if PHONE_APP
+        if (_phoneMenuDisabled)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!_phoneMenuChecked)
+            {
+                _phoneMenuChecked = true;
+                if (!PhoneMenu.PhoneMenuHost.IsS1ApiLoaded())
+                {
+                    _phoneMenuDisabled = true;
+                    _log.Warning("S1API is not installed: the in-game phone menu is unavailable. Install S1API (see docs/INSTALLATION.md). Everything else keeps working.");
+                    return;
+                }
+
+                _log.Info("S1API detected: the 'Take It' app is available on the in-game phone.");
+            }
+
+            PhoneMenu.PhoneMenuHost.Tick();
+        }
+        catch (Exception ex)
+        {
+            _phoneMenuDisabled = true;
+            _log.Error($"Phone menu disabled after an error (is a compatible S1API installed?): {ex}");
+        }
+#else
+        if (!_phoneMenuChecked)
+        {
+            _phoneMenuChecked = true;
+            _log.Info("This build does not include the in-game phone menu (Mono build or built without S1API references).");
+        }
+#endif
     }
 
     public override void OnDeinitializeMelon()
     {
         _patches?.RemoveAll();
+        _menu?.Dispose();
+        _menu = null;
+        Menu = null;
         _discovery = null;
         IsOperational = false;
+    }
+
+    private void CreateMenu()
+    {
+        // Mod-owned folder under MelonLoader's UserData; never inside the game's own save folders.
+        var root = Path.Combine(MelonEnvironment.UserDataDirectory, ModInfo.Name);
+        _menu = new ModMenuController(_discovery!.Catalog, new JsonPolicyStore(root), _policies, _log)
+        {
+            HostDiagnostics = new[]
+            {
+                $"Mod: {ModInfo.Name} {ModInfo.Version} ({BuildTarget.Runtime} build)",
+                $"Game: {UnityInformationHandler.GameName} {UnityInformationHandler.GameVersion} (Unity {UnityInformationHandler.EngineVersion})",
+                $"MelonLoader {MelonLoader.Properties.BuildInfo.Version}; runtime {LoaderRuntime()}",
+            },
+        };
+        Menu = _menu;
+        _log.Info("Mod menu settings initialized (stored per save under UserData/TakeItOrLeaveIt/saves).");
     }
 
     private void LogEnvironment()

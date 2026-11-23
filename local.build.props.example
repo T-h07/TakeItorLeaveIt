@@ -15,5 +15,10 @@
 
     <!-- true = copy the build output into <ScheduleOneGameDir>\Mods and \UserLibs after each build. -->
     <DeployToGame>false</DeployToGame>
+
+    <!-- Phase 02 phone app: folder with reference assemblies exported by tools\Export-BuildReferences.ps1
+         (must contain Mods\S1API.Il2Cpp.MelonLoader.dll and MelonLoader\Il2CppAssemblies\). Keep it OUTSIDE
+         the repository. Empty = build without the phone app (as CI does). Example: C:\S1Refs -->
+    <S1RefsDir></S1RefsDir>
   </PropertyGroup>
 </Project>

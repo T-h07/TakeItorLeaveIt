@@ -46,7 +46,7 @@ boundaries in §2.
 | --- | --- | --- |
 | **Core** | .NET Standard 2.0 only | Unity, MelonLoader, Harmony, game assemblies |
 | **Game** | Core, MelonLoader, HarmonyX, game assemblies (Phase 01+) | UI internals |
-| **UI** (Phase 02) | Core, Game adapters, Unity UI, S1API (if adopted) | business rules (asks Core) |
+| **UI** (Phase 02: `Game/PhoneMenu` folder, not a project) | Core, Unity UI, S1API 3.2.3 | business rules (asks `ModMenuController`) |
 | **Persistence** (Phase 06) | Core; ideally nothing game-specific | Harmony |
 | **Multiplayer** (Phase 07) | Core, Game, FishNet (via game assemblies) | UI |
 
@@ -134,14 +134,70 @@ fails, use option 3. S1API is **not** a dependency of Phase 00.
 Option 1 also gives Phase 01 well-tested lifecycle events and product discovery wrappers. Phase 01 may still read
 `ProductManager` directly (PATCH_MAP PRD-01) to avoid taking the dependency before the spike.
 
+### Outcome (Phase 02, implemented)
+
+Option 1 was built. The spike was replaced by compiling against the owner's real files: reference assemblies
+exported from Schedule I v0.4.7f12 (IL2CPP) with **S1API 3.2.3.0** (`S1API.Il2Cpp.MelonLoader.dll`, built against
+MelonLoader 0.7.3 and Il2CppInterop 1.5.1, the same versions as our NuGet references). No `UI` project was
+created: the phone app is a folder (`Game/PhoneMenu`) compiled only into the IL2CPP DLL, and **only** when
+`S1RefsDir` is set locally (`PHONE_APP` define). CI and the Mono DLL build without it. In-game behaviour is
+**not yet verified** (see [PHASE_02_TESTING.md](PHASE_02_TESTING.md)). No hotkey fallback was built.
+
+## 6a. Mod menu (Phase 02)
+
+```text
+ game state ──reflection──► ProductDiscoveryRuntime ──► ProductCatalogService (Core, per-save snapshot)
+                                                              │ StateChanged
+                                                              ▼
+ JsonPolicyStore (UserData/…/saves/<id>.json) ◄──Load/Save── ModMenuController (Core) ──► InMemoryPolicyProvider
+                                                              ▲   ViewVersion            (saved policy, for 03/04)
+                                                              │ actions / views
+                                    TakeItOrLeaveItPhoneApp (Game/PhoneMenu, S1API + Unity UI)
+```
+
+| Component | Location | Responsibility |
+| --- | --- | --- |
+| `ModMenuController` | Core `Menu/` | All menu state: screen, selected category, search, paging, feedback, reset confirmation; **draft** vs **saved** `PolicySettings`; views (category summaries, product pages, preview) computed with `SaleEligibilityPolicy`; session switching per save |
+| `MenuTypes`, `MenuText`, `ProductSearch` | Core `Menu/` | View models, user-facing strings, case-insensitive multi-term search over name / effects / ID |
+| `JsonPolicyStore`, `PolicySettingsJson`, `MiniJson` | Core `Persistence/` | Per-save JSON, schema version 1, atomic write (temp file + replace), unreadable files backed up and replaced by defaults with a warning |
+| `TakeItOrLeaveItPhoneApp`, `UiKit`, `Theme`, `AppIcon` | Game `PhoneMenu/` | S1API `PhoneApp` (public parameterless ctor, discovered by S1API); builds Unity UI in `OnCreatedUI`; renders controller views; runtime-drawn icon |
+| `PhoneMenuHost` | Game `PhoneMenu/` | Narrow, `NoInlining` boundary called from `OnUpdate` inside try/catch |
+
+**UI lifecycle.** S1API creates a new app instance each time the phone home screen starts in the `Main` scene
+and calls `OnCreatedUI(container)`. The newest instance becomes `Current`; `OnDestroyed` clears it. The mod's
+`OnUpdate` calls `PhoneMenuHost.Tick()`; the app rebuilds only when it is open **and**
+`ModMenuController.ViewVersion` changed. The app never subscribes to controller events, so scene reloads
+cannot accumulate handlers. While the search field has focus the app sets `S1API.Input.Controls.IsTyping`, and
+it releases it when focus is lost, the app closes, the phone closes or the app is destroyed.
+
+**Layout.** `MenuLayout` (Core, unit-tested) turns the measured container size into rectangles for the
+header, sidebar, body, Products header, list, pager and preview (two columns, or stacked when narrow). The app
+re-measures the container every frame it is open and re-places regions when the size changes. Scroll lists
+are built by `UiKit.ScrollList` (not S1API's `ScrollableVerticalList`, whose content is 100 units wider than
+its viewport). `LayoutProbe` logs a bounds check per screen and size.
+
+**Draft vs saved.** Every edit changes the draft only (the preview shows "Showing unsaved changes"). **Save**
+validates, writes the file and only then publishes the policy to `InMemoryPolicyProvider` and shows
+"Settings saved."; a failed write keeps the draft and shows the error. **Discard** restores the saved
+settings; **Reset** needs confirmation and then still needs Save.
+
+**Catalog refresh.** The controller listens to `ProductCatalogService.StateChanged` (polled about once per
+second by discovery). A new snapshot of the same save keeps the draft; a different save loads that save's
+file (unsaved edits of the previous save are discarded with a warning); no save → *Waiting for active save*.
+Selections of products that are not unlocked stay in the file but count as inactive.
+
+**Failure handling.** S1API missing → one warning, no menu, rest of the mod unaffected. Any exception from the
+phone app → logged once, menu disabled for the session. UI build failure → an error panel inside the app.
+Menu initialization failure → the app shows "unavailable".
+
 ## 7. Configuration and persistence strategy (Phase 02 / 06)
 
-- Settings are stored as **mod-owned JSON**, never inside vanilla save files: one global file plus one profile
-  per save (keyed by the save's identity, to be determined in Phase 06 from `LoadManager`/save info).
-- A schema version field and forward migrations (`schemaVersion` in `MOD_MENU_SPEC.md`).
+- Implemented in Phase 02: **mod-owned JSON**, never inside vanilla save files, one file per save at
+  `<game>/UserData/TakeItOrLeaveIt/saves/<save-id>.json`, where `<save-id>` is the Phase 01 hashed
+  `SaveIdentity` of the save folder. Schema: `{schemaVersion, enabled, defaultMode, categories:{key:{mode, selectedProducts[]}}}`.
+- Deferred to Phase 06: migrations beyond schema 1, global (non-save) settings, export/import, backups/rotation.
 - Selections reference stable product IDs. Unknown or locked IDs are treated as inactive and never unlocked.
-- MelonPreferences may hold simple global toggles. Dynamic product allowlists need our own file because
-  MelonPreferences is not designed for per-save lists.
+- MelonPreferences is not used: dynamic per-save product lists need our own file.
 
 ## 8. Multiplayer considerations (Phase 07)
 
@@ -162,3 +218,5 @@ Option 1 also gives Phase 01 well-tested lifecycle events and product discovery 
 | Core shipped as `UserLibs/TakeItOrLeaveIt.Core.dll` | MelonLoader's location for shared libraries; keeps `Mods/` to the single mod DLL |
 | No fake game API stubs | Explicit project requirement; game-facing code is built only against real assemblies |
 | Warnings as errors; nullable enabled | Catch defects early |
+| Menu logic in Core, phone app only renders | Unit-testable without the game; the UI can be replaced (e.g. hotkey fallback) without touching rules |
+| Phone app compiled only with local references | Game/S1API assemblies are proprietary or not on NuGet for IL2CPP; CI stays reproducible |

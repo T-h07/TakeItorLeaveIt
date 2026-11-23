@@ -46,6 +46,38 @@
   </ItemGroup>
 
   <!--
+    Phase 02 phone app (S1API). Compiled only for the IL2CPP build and only when S1RefsDir points to
+    reference assemblies exported from a real game install (tools/Export-BuildReferences.ps1), set in
+    the git-ignored local.build.props. These references are compile-time only (Private=false): nothing
+    from the game or S1API is copied into our output. Without them (e.g. in CI) the mod builds without
+    the phone app and logs that the menu is unavailable.
+  -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net6.0' And '$(S1RefsDir)' != '' And Exists('$(S1RefsDir)\Mods\S1API.Il2Cpp.MelonLoader.dll')">
+    <PhoneAppEnabled>true</PhoneAppEnabled>
+    <DefineConstants>$(DefineConstants);PHONE_APP</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(PhoneAppEnabled)' == 'true'">
+    <Reference Include="S1API" HintPath="$(S1RefsDir)\Mods\S1API.Il2Cpp.MelonLoader.dll" Private="false" />
+    <Reference Include="Il2Cppmscorlib" HintPath="$(S1RefsDir)\MelonLoader\Il2CppAssemblies\Il2Cppmscorlib.dll" Private="false" />
+    <Reference Include="UnityEngine.CoreModule" HintPath="$(S1RefsDir)\MelonLoader\Il2CppAssemblies\UnityEngine.CoreModule.dll" Private="false" />
+    <Reference Include="UnityEngine.UI" HintPath="$(S1RefsDir)\MelonLoader\Il2CppAssemblies\UnityEngine.UI.dll" Private="false" />
+    <Reference Include="UnityEngine.UIModule" HintPath="$(S1RefsDir)\MelonLoader\Il2CppAssemblies\UnityEngine.UIModule.dll" Private="false" />
+    <Reference Include="UnityEngine.TextRenderingModule" HintPath="$(S1RefsDir)\MelonLoader\Il2CppAssemblies\UnityEngine.TextRenderingModule.dll" Private="false" />
+    <Reference Include="UnityEngine.IMGUIModule" HintPath="$(S1RefsDir)\MelonLoader\Il2CppAssemblies\UnityEngine.IMGUIModule.dll" Private="false" />
+    <Reference Include="UnityEngine.InputLegacyModule" HintPath="$(S1RefsDir)\MelonLoader\Il2CppAssemblies\UnityEngine.InputLegacyModule.dll" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(PhoneAppEnabled)' != 'true'">
+    <Compile Remove="PhoneMenu\**" />
+  </ItemGroup>
+
+  <Target Name="ReportPhoneApp" BeforeTargets="CoreCompile" Condition="'$(TargetFramework)' == 'net6.0'">
+    <Message Importance="high" Condition="'$(PhoneAppEnabled)' == 'true'" Text="TakeItOrLeaveIt: building WITH the S1API phone app (references: $(S1RefsDir))." />
+    <Message Importance="high" Condition="'$(PhoneAppEnabled)' != 'true'" Text="TakeItOrLeaveIt: building WITHOUT the phone app (set S1RefsDir in local.build.props; see docs/BUILDING.md)." />
+  </Target>
+
+  <!--
     Optional local deployment (DeployToGame=true in local.build.props).
     Copies only our own files: the mod DLL into <game>\Mods and the Core library into <game>\UserLibs.
     Nothing in the game installation is deleted or overwritten except previous copies of these files.

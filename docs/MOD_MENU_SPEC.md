@@ -1,6 +1,33 @@
 # Mod Menu — Functional Specification
 
-**Status:** Proposed UI and settings contract. No code has been built or tested yet.
+**Status:** Phase 02 implemented the subset described in "Implemented in Phase 02" below (not yet tested in game).
+The rest of this document is the original concept for later phases.
+
+## Implemented in Phase 02
+
+Entry point: the **Take It** app on the in-game phone (S1API 3.2.3 `PhoneApp`, IL2CPP builds made with local
+references). Landscape layout: top bar (title, status/feedback, **Discard**, **Save**), left navigation, content.
+
+| Screen | Implemented |
+| --- | --- |
+| Overview | Mod ON/OFF for the save; active save; catalog status (*Waiting for active save...*, *Waiting for product data...*, *Unable to load product catalog.*); "Sales integration is planned for Phases 03 and 04"; one card per discovered category with mode, eligible and unlocked counts, warnings and inactive selections; tapping a card opens it in Products |
+| Products | Tabs for every discovered category (no fixed list); mode buttons with descriptions; search (case-insensitive, all terms, over name, effect IDs and product ID); *Select all unlocked*, *Select shown* (current search), *Clear* (current category only); 40 rows per page with check box, name, detail (Locked / effects / ID when names repeat) and status; hypothetical preview "Hypothetical order: 5 <category>" from `SaleEligibilityPolicy` |
+| Settings | Save / Discard, Reset to defaults with confirmation (then Save), storage location |
+| Diagnostics | Mod, game, Unity, MelonLoader and runtime versions; catalog generation, counts and issues |
+
+Rules: only unlocked products can be ticked (locked rows are disabled; previously saved selections of locked
+products are kept but counted as inactive); *Selected Only* with nothing eligible shows "No products selected.
+This category currently has no eligible products."; *Disabled* shows 0 eligible. Edits change a draft;
+"Settings saved." appears only after the file was written. Settings: one JSON file per save (see ARCHITECTURE §7).
+
+### Changes from the concept below, and why
+
+- **Customer Sales, Dealer Sales, Profiles/presets, quality/effect rules, base-strain mode:** not built; they configure behaviour that does not exist until Phases 03-05. Showing them now would promise effects the mod cannot deliver.
+- **Sales preview** is labelled *hypothetical* and checks eligibility only (no stock), because no sale path is hooked yet.
+- **Debug logging toggle, hook status:** not built; there are no hooks yet. Diagnostics shows versions and catalog state.
+- **Hotkey/pause-menu fallback:** not built. The phone app compiled against the real S1API 3.2.3; a fallback is only worth building if it fails in game.
+- **Paging (40 rows)** instead of one long list keeps Unity UI rebuilds small for catalogs with hundreds of products.
+- **Mod ON/OFF** is per save (part of the save's settings), not global.
 
 ## Experience
 
@@ -108,6 +135,6 @@ Take It Or Leave It
 
 ## Testing and verification gates
 
-The UI framework is chosen after Phase 00 verifies runtime compatibility. Consider S1API for a native phone app and MelonPreferences for basic settings, with an independent policy editor for dynamic product lists. Avoid claiming that a third-party mod manager can natively edit our custom product allowlists without an explicit integration.
+Phase 02 chose an S1API phone app with our own per-save JSON (no MelonPreferences). Physical acceptance steps: [PHASE_02_TESTING.md](PHASE_02_TESTING.md). Third-party mod managers cannot edit these product allowlists.
 
 Refs: https://ifbars.github.io/S1API/ and https://github-wiki-see.page/m/Prowiler/schedule1-mod-manager-wiki/wiki/Mod-Authors
