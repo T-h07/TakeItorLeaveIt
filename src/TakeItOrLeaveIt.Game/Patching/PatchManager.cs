@@ -30,7 +30,7 @@ internal sealed class PatchManager
     {
         if (_modules.Count == 0)
         {
-            _log.Info("No gameplay patches enabled (Phase 01 is read-only).");
+            _log.Info("No gameplay patches enabled (sales are not changed until Phases 03/04).");
             Applied = true;
             return;
         }

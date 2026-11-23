@@ -25,8 +25,8 @@ using TakeItOrLeaveIt.Game.Patching;
 namespace TakeItOrLeaveIt.Game;
 
 /// <summary>
-/// MelonLoader entry point. Phase 01: diagnostics, Harmony infrastructure (no patches) and read-only
-/// product discovery. It does NOT change any gameplay (customers, dealers, products, inventory, money, XP, saves).
+/// MelonLoader entry point. Phase 02: diagnostics, Harmony infrastructure (no patches), read-only
+/// product discovery and the mod menu (S1API phone app) with per-save settings. It does NOT change any gameplay (customers, dealers, products, inventory, money, XP, saves).
 /// </summary>
 public sealed class TakeItOrLeaveItMod : MelonMod
 {
@@ -77,7 +77,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
                 }
 
                 _log.Info(ModInfo.InitializedMessage);
-                _log.Info("Phase 01 running in read-only mode: products are discovered and evaluated, nothing in the game is changed.");
+                _log.Info("Phase 02: product discovery, mod menu and per-save settings. Sales are not changed yet (Phases 03/04).");
                 break;
             case StartupOutcome.UnsupportedEnvironment:
                 _log.Error("Initialization stopped: unsupported environment. The mod is inactive; the game is unaffected.");
@@ -93,7 +93,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
         // One line per scene load (not per frame): confirms the mod survives into gameplay scenes.
         if (IsOperational)
         {
-            _log.Info($"Scene loaded: '{sceneName}' (index {buildIndex}). No gameplay changes in Phase 01.");
+            _log.Info($"Scene loaded: '{sceneName}' (index {buildIndex}). No gameplay changes in Phase 02.");
             _discovery?.PollNow();
         }
     }
@@ -104,7 +104,53 @@ public sealed class TakeItOrLeaveItMod : MelonMod
         if (IsOperational)
         {
             _discovery?.Tick();
+            TickPhoneMenu();
         }
+    }
+
+    private bool _phoneMenuChecked;
+#if PHONE_APP
+    private bool _phoneMenuDisabled;
+#endif
+
+    /// <summary>Drives the S1API phone app (IL2CPP builds made with local references only).</summary>
+    private void TickPhoneMenu()
+    {
+#if PHONE_APP
+        if (_phoneMenuDisabled)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!_phoneMenuChecked)
+            {
+                _phoneMenuChecked = true;
+                if (!PhoneMenu.PhoneMenuHost.IsS1ApiLoaded())
+                {
+                    _phoneMenuDisabled = true;
+                    _log.Warning("S1API is not installed: the in-game phone menu is unavailable. Install S1API (see docs/INSTALLATION.md). Everything else keeps working.");
+                    return;
+                }
+
+                _log.Info("S1API detected: the 'Take It' app is available on the in-game phone.");
+            }
+
+            PhoneMenu.PhoneMenuHost.Tick();
+        }
+        catch (Exception ex)
+        {
+            _phoneMenuDisabled = true;
+            _log.Error($"Phone menu disabled after an error (is a compatible S1API installed?): {ex}");
+        }
+#else
+        if (!_phoneMenuChecked)
+        {
+            _phoneMenuChecked = true;
+            _log.Info("This build does not include the in-game phone menu (Mono build or built without S1API references).");
+        }
+#endif
     }
 
     public override void OnDeinitializeMelon()
