@@ -19,22 +19,37 @@ internal static class SalesSession
     private static long _nextAuthorityCheck;
     private static long _nextPrune;
     private static long _readySince = -1;
+    private static bool _saveReady;
 
     public static Func<ProductCatalogSnapshot?>? Catalog { get; set; }
 
-    /// <summary>Single player host only (FishNet server with at most one player). See PLAYER_SALES.md.</summary>
+    /// <summary>The sales host (set by the mod); polls the Phase 07 session model.</summary>
+    public static PlayerSalesHost? Host { get; set; }
+
+    /// <summary>
+    /// Phase 07 (docs/MULTIPLAYER.md): reads the network facts and applies the session decision to both coordinators and
+    /// the menu. Host-side features run on the host whatever the number of players; a client manages nothing and shows
+    /// the host's rules read-only; anything unknown stays vanilla.
+    /// </summary>
     public static void RefreshAuthority()
     {
-        var coordinator = GameSales.Coordinator;
-        if (coordinator is null)
+        var host = Host;
+        if (host is null || GameSales.Coordinator is null)
         {
             return;
         }
 
-        var isServer = Il2CppFishNet.InstanceFinder.IsServer;
-        var players = Player.PlayerList?.Count ?? -1;
-        coordinator.SetAuthority(isServer, players < 0 ? 0 : players);
-        GameDealers.Coordinator?.SetAuthority(isServer, players < 0 ? 0 : players);
+        try
+        {
+            var reading = GameNetwork.Read(_saveReady, host.SaveIdentity, host.HooksApplied, compatibilityOk: true,
+                host.HooksApplied ? null : host.HooksReason);
+            host.ApplyNetwork(reading, SteamLobbyRulesChannel.Instance);
+        }
+        catch (Exception ex)
+        {
+            host.FailClosed();
+            GameSales.Once("session-error", $"Session check failed; Take It manages nothing until the next successful check. {ex.GetType().Name}: {ex.Message}", warning: true);
+        }
     }
 
     /// <summary>Called from OnUpdate. Cheap unless a timer elapsed.</summary>
@@ -47,6 +62,15 @@ internal static class SalesSession
         }
 
         var now = Clock.ElapsedMilliseconds;
+        _saveReady = saveReady;
+
+        // Phase 07: the session is checked even before a save is ready (a client may never have a local catalog).
+        if (now >= _nextAuthorityCheck)
+        {
+            _nextAuthorityCheck = now + 2_000;
+            RefreshAuthority();
+        }
+
         if (!saveReady)
         {
             _readySince = -1;
@@ -57,12 +81,6 @@ internal static class SalesSession
         {
             _readySince = now;
             _nextPrune = now + 20_000; // let the save finish restoring its contracts first
-        }
-
-        if (now >= _nextAuthorityCheck)
-        {
-            _nextAuthorityCheck = now + 2_000;
-            RefreshAuthority();
         }
 
         if (now >= _nextPrune)

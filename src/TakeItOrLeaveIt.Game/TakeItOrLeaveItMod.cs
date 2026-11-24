@@ -246,6 +246,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
         Sales.GameSales.Log = _log;
         Sales.GameSales.CatalogGeneration = () => _discovery.Catalog.State.Snapshot?.Generation ?? -1;
         Sales.SalesSession.Catalog = () => _discovery.Catalog.State.Snapshot;
+        Sales.SalesSession.Host = _sales;
         Sales.GameDealers.Coordinator = _sales.Dealers;
         Sales.GameDealers.Notifier = _sales.Notifier;
         _sales.SessionChanged = Sales.GameDealers.Reset; // dealer ids, seen dealers and timers belong to one save session
