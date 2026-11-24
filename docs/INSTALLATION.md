@@ -1,13 +1,15 @@
 # Installation (development build 0.0.1-dev)
 
-> Phase 04 build: it discovers products, adds the **Take It** phone app where you configure per-save product
+> Phase 05 build: it discovers products, adds the **Take It** phone app where you configure per-save product
 > rules, and (IL2CPP build with local game references) applies them to **customer orders** and **hired-dealer
 > appointments**: accepted orders take any permitted product of their category ([PLAYER_SALES.md](PLAYER_SALES.md),
 > [DEALER_SALES.md](DEALER_SALES.md)). Payment, the dealer's cut, XP, item transfer and contract completion stay
-> with the game; products and game saves are not changed. **Back up your save before testing**: Phases 03 and 04
+> with the game; products and game saves are not changed. Phase 05 adds advanced rules
+> ([ADVANCED_RULES.md](ADVANCED_RULES.md)); the first save after updating keeps a copy of the older settings file
+> (`<save id>.json.schema1.bak`). **Back up your save and `UserData/TakeItOrLeaveIt/` before testing**: Phases 03-05
 > are not yet tested in game. Phase 00 loading was verified on Schedule I v0.4.7f12 (IL2CPP); in-game steps:
 > [PHASE_01_TESTING.md](PHASE_01_TESTING.md), [PHASE_02_TESTING.md](PHASE_02_TESTING.md),
-> [PHASE_03_TESTING.md](PHASE_03_TESTING.md), [PHASE_04_TESTING.md](PHASE_04_TESTING.md).
+> [PHASE_03_TESTING.md](PHASE_03_TESTING.md), [PHASE_04_TESTING.md](PHASE_04_TESTING.md), [PHASE_05_TESTING.md](PHASE_05_TESTING.md).
 
 ## 1. Compatibility
 
@@ -68,7 +70,7 @@ same lines). Expected lines, in order (timestamps omitted):
 [TakeItOrLeaveIt] Dealer restock messages: Active
 [TakeItOrLeaveIt] Initialization completed.
 [TakeItOrLeaveIt] Version 0.0.1-dev initialized successfully.
-[TakeItOrLeaveIt] Phase 04: player sales hooks active; dealer sales hooks active.
+[TakeItOrLeaveIt] Phase 05: player sales hooks active; dealer sales hooks active.
 [TakeItOrLeaveIt] S1API detected: the 'Take It' app is available on the in-game phone.
 [TakeItOrLeaveIt] Scene loaded: '<scene>' (index n).
 

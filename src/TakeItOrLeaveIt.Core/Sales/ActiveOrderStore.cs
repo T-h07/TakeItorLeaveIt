@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using TakeItOrLeaveIt.Core.Persistence;
+using TakeItOrLeaveIt.Core.Policies;
 using TakeItOrLeaveIt.Core.Products;
 
 namespace TakeItOrLeaveIt.Core.Sales;
@@ -179,7 +180,19 @@ public sealed class ActiveOrderStore
             ["requestedProducts"] = order.RequestedProducts.Select(p => (object?)p.Value).ToList(),
             ["mixedDeliveries"] = order.MixedDeliveries,
             ["policyRevision"] = order.PolicyRevision,
+            ["mixing"] = PolicyConfiguration.FormatMixing(order.Mixing),
         };
+
+        // Phase 05 (optional fields; older readers ignore them).
+        if (order.MinimumQuality is { } minimum)
+        {
+            body["minQuality"] = QualityTiers.Id(minimum);
+        }
+
+        if (order.BaseStrainGroups.Count > 0)
+        {
+            body["groups"] = order.BaseStrainGroups.ToDictionary(p => p.Key.Value, p => (object?)p.Value.Cast<object?>().ToList(), StringComparer.Ordinal);
+        }
 
         // Added with the fair-price rule (still schema 1: older readers ignore unknown fields, and entries without
         // "pricing" load through the legacy compatibility path).
@@ -268,10 +281,55 @@ public sealed class ActiveOrderStore
         var mixed = !body.TryGetValue("mixedDeliveries", out var m) || m is not bool mixedValue || mixedValue;
         var revision = body.TryGetValue("policyRevision", out var r) && r is double rev && rev >= 0 && rev <= long.MaxValue ? (long)rev : 0;
         var requested = Keys(body, "requestedProducts");
+
+        // Phase 05 fields. An unreadable value is made stricter, never looser.
+        MixingMode? mixing = null;
+        if (body.TryGetValue("mixing", out var mx) && mx is not null)
+        {
+            if (mx is string mixText && PolicyConfiguration.TryParseMixing(mixText, out var parsedMixing))
+            {
+                mixing = parsedMixing;
+            }
+            else
+            {
+                mixing = MixingMode.SingleProduct;
+                issues.Add($"Order {id} has an unknown mixing mode; single product used.");
+            }
+        }
+
+        QualityTier? minimum = null;
+        if (body.TryGetValue("minQuality", out var mq) && mq is not null)
+        {
+            if (mq is string qualityText && QualityTiers.TryParse(qualityText, out var parsedQuality))
+            {
+                minimum = parsedQuality;
+            }
+            else
+            {
+                issues.Add($"Order {id} has an unknown minimum quality; ignored.");
+                return null;
+            }
+        }
+
+        var groups = new List<KeyValuePair<ProductKey, IReadOnlyList<string>>>();
+        if (body.TryGetValue("groups", out var gr) && gr is Dictionary<string, object?> groupTable)
+        {
+            foreach (var entry in groupTable)
+            {
+                if (ProductKey.TryCreate(entry.Key, out var key) && entry.Value is List<object?> list)
+                {
+                    groups.Add(new KeyValuePair<ProductKey, IReadOnlyList<string>>(key, list.OfType<string>().ToArray()));
+                }
+            }
+        }
+
+        CategoryOrder Make(IEnumerable<ProductKey> products, PricingBasis basisValue, decimal? quote, IEnumerable<KeyValuePair<ProductKey, decimal>>? unitPrices)
+            => new(id, category, (int)units, products, mixed, revision, requested, basisValue, quote, unitPrices, mixing, groups, minimum);
+
         var pricing = body.TryGetValue("pricing", out var pr) ? pr as string : null;
         if (pricing is null)
         {
-            var legacy = new CategoryOrder(id, category, (int)units, allowed, mixed, revision, requested).WithLegacyPricing();
+            var legacy = Make(allowed, PricingBasis.Legacy, null, null).WithLegacyPricing();
             issues.Add(legacy.PricingBasis == PricingBasis.Legacy
                 ? $"Order {id} predates the fair-price rule and allows none of its requested products; kept unchanged."
                 : $"Order {id} predates the fair-price rule; limited to its requested product(s).");
@@ -303,7 +361,7 @@ public sealed class ActiveOrderStore
             }
         }
 
-        var order = new CategoryOrder(id, category, (int)units, allowed, mixed, revision, requested, basis.Value, quoted, prices);
+        var order = Make(allowed, basis.Value, quoted, prices);
         var substitutesOutsideRequest = order.AllowedProducts.Any(p => !requested.Contains(p));
         if (order.PricingBasis == PricingBasis.RequestedOnly && substitutesOutsideRequest)
         {
@@ -317,7 +375,7 @@ public sealed class ActiveOrderStore
             }
 
             issues.Add($"Order {id} has unusable price data; limited to its requested product(s).");
-            return new CategoryOrder(id, category, (int)units, safe, mixed, revision, requested, PricingBasis.RequestedOnly, null, prices);
+            return Make(safe, PricingBasis.RequestedOnly, null, prices);
         }
 
         return order;

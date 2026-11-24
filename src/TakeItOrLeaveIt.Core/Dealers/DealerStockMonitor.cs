@@ -17,6 +17,8 @@ public static class DealerStockMonitor
     /// <summary>
     /// Permitted units per category under the live settings. Only categories that currently have eligible products
     /// appear (a Disabled category, or one whose selection is empty or locked, is never reported as "out").
+    /// Phase 05: pass the policy resolved for the dealer (<see cref="PolicyConfiguration.ForScope"/>); only stock at or
+    /// above the category's quality minimum counts.
     /// </summary>
     public static IReadOnlyDictionary<CategoryKey, long> EligibleUnitsByCategory(DealerStock stock, PolicyConfiguration? policy, ProductCatalogSnapshot? catalog)
     {
@@ -35,9 +37,10 @@ public static class DealerStockMonitor
             }
 
             long units = 0;
+            var minimum = policy.GetEffectivePolicy(category.Key).MinimumQuality;
             foreach (var product in eligibility.EligibleProducts)
             {
-                units += stock.UnitsOf(product.Key);
+                units += stock.UnitsOf(product.Key, minimum);
             }
 
             result[category.Key] = units;
@@ -47,8 +50,9 @@ public static class DealerStockMonitor
     }
 
     /// <summary>
-    /// Units the dealer could use for this appointment right now: its snapshot's products, minus what other
-    /// appointments hold. Mixed off: the best single product (an order is never split across products then).
+    /// Units the dealer could use for this appointment right now: its snapshot's products at or above its quality
+    /// minimum, minus what other appointments hold. With limited mixing: the best single combination group (one
+    /// product, or one base strain), because an order is never split across groups then.
     /// </summary>
     public static long AvailableFor(DealerAppointment appointment, DealerStock stock, ReservationLedger ledger)
     {
@@ -57,15 +61,26 @@ public static class DealerStockMonitor
             return 0;
         }
 
-        var perProduct = appointment.Order.AllowedProducts
-            .Select(p => ledger.Available(stock, p, appointment.ContractId))
+        var order = appointment.Order;
+        var perProduct = order.AllowedProducts
+            .Select(p => (Product: p, Units: ledger.Available(stock, p, order.MinimumQuality, appointment.ContractId)))
             .ToList();
         if (perProduct.Count == 0)
         {
             return 0;
         }
 
-        return appointment.Order.MixedDeliveries ? perProduct.Sum() : perProduct.Max();
+        if (order.MixedDeliveries)
+        {
+            return perProduct.Sum(p => p.Units);
+        }
+
+        return perProduct
+            .SelectMany(p => order.GroupsOf(p.Product).Select(g => (Group: g, p.Units)))
+            .GroupBy(x => x.Group, StringComparer.Ordinal)
+            .Select(g => g.Sum(x => x.Units))
+            .DefaultIfEmpty(0)
+            .Max();
     }
 
     /// <summary>max(0, required − available).</summary>

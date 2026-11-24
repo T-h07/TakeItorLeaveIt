@@ -20,6 +20,19 @@ products are kept but counted as inactive); *Selected Only* with nothing eligibl
 This category currently has no eligible products."; *Disabled* shows 0 eligible. Edits change a draft;
 "Settings saved." appears only after the file was written. Settings: one JSON file per save (see ARCHITECTURE §7).
 
+## Added in Phase 05
+
+| Screen | Implemented |
+| --- | --- |
+| Products | Fourth mode *Blocklist*; the list buttons edit the blocked list in that mode (*Block all unlocked*, *Block shown*); rows show lineage (*base strain*, *from ...*, *lineage unknown*); the summary names the scope when a dealer is edited |
+| Rules | Per category: list matching (exact recipe / base strain), minimum quality (Any, Poor+ ... Heavenly+), effects (tap to cycle Any/Required/Excluded, *Require all/any*, Clear) with conflict and inactive-effect markers; *Use global rule* in dealer scope |
+| Sales | Player sales and dealer sales switches, mixing mode, dealer list with *Edit overrides* / *Remove overrides* and inactive overrides |
+| Presets | Current preset or *Custom*; *Preview changes* → change list and warnings → *Apply to draft* / *Cancel* |
+| Overview / Diagnostics | Preset, switches and mixing line; per-category rule detail; rule engine status (schema, scopes, lineage coverage) |
+
+Navigation has seven entries at 34 px so it fits the 450 px minimum height; advanced options are on their own
+screens so the Products header keeps its fixed height. Player guide: [ADVANCED_RULES.md](ADVANCED_RULES.md).
+
 ### Changes from the concept below, and why
 
 - **Customer Sales, Dealer Sales, Profiles/presets, quality/effect rules, base-strain mode:** not built; they configure behaviour that does not exist until Phases 03-05. Showing them now would promise effects the mod cannot deliver.
@@ -113,6 +126,8 @@ Take It Or Leave It
 **Note:** `game:granddaddy_purple` is a *placeholder* identity for documentation, not a verified Schedule I product ID. Production code must read actual stable IDs from the installed version.
 
 ## Policy precedence
+
+> Phase 05 implements the full order in [PHASE_05_ANALYSIS.md §5](PHASE_05_ANALYSIS.md#5-rule-precedence-one-pipeline).
 
 1. Unsupported game state or disabled global mod -> vanilla behavior / feature-safe fallback.
 2. Valid category required; reject cross-category swaps.

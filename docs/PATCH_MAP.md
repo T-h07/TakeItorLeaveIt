@@ -19,6 +19,12 @@
 > (`NPC.MSGConversation` → `MSGConversation.SendMessage`) are verified in
 > [PHASE_04_PATCH_ANALYSIS.md §8-§11](PHASE_04_PATCH_ANALYSIS.md#8-enhancements-overview).
 
+> **Phase 05:** no new hook. O1 now reads its existing `Dealer` argument to pick the player or dealer scope
+> (meaning PROBABLE, scenario OF503); D1 asks `RemoveAndReturnProductFromInventory` for at least the reserved
+> lot's quality; discovery reads `ProductManager.mixRecipes` and `QualityItemInstance.Quality` (VERIFIED members,
+> [PHASE_05_ANALYSIS.md](PHASE_05_ANALYSIS.md) §1-§2); the dealer list uses `NPC.FullName` and `Dealer.IsRecruited`
+> from the existing D2 tick.
+
 ## 1. How to read this map
 
 ### Evidence sources

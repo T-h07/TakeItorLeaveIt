@@ -138,7 +138,13 @@ public sealed class DealerRestockNotificationCoordinator
         }
 
         // Type A.
-        foreach (var pair in DealerStockMonitor.EligibleUnitsByCategory(stock, policy, catalog))
+        // Out-of-stock texts use the dealer's effective rules and only while dealer sales are on (Phase 05); shortage
+        // texts above still cover appointments accepted before dealer sales were switched off.
+        var scope = SalesScope.Dealer(stock.DealerId);
+        var live = policy.IsPathEnabled(scope)
+            ? DealerStockMonitor.EligibleUnitsByCategory(stock, policy.ForScope(scope), catalog)
+            : new Dictionary<CategoryKey, long>();
+        foreach (var pair in live)
         {
             var category = pair.Key;
             if (pair.Value > 0)

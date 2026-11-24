@@ -7,6 +7,7 @@ using Il2CppScheduleOne.Economy;
 using Il2CppScheduleOne.Product;
 using TakeItOrLeaveIt.Core.Dealers;
 using TakeItOrLeaveIt.Core.Inventory;
+using TakeItOrLeaveIt.Core.Menu;
 using TakeItOrLeaveIt.Core.Products;
 
 namespace TakeItOrLeaveIt.Game.Sales;
@@ -23,6 +24,7 @@ internal static class GameDealers
 
     private static readonly Stopwatch Clock = Stopwatch.StartNew();
     private static readonly Dictionary<IntPtr, string> DealerIds = new();
+    private static readonly Dictionary<string, DealerInfo> Seen = new(StringComparer.Ordinal);
     private static readonly Dictionary<string, long> NextReconcile = new(StringComparer.Ordinal);
     private static readonly Dictionary<string, double> NextNotify = new(StringComparer.Ordinal);
 
@@ -55,8 +57,9 @@ internal static class GameDealers
     }
 
     /// <summary>
-    /// The dealer's packaged product stock in units (stack size x package amount), one entry per slot. Unpackaged
-    /// or unreadable items are left out, so the snapshot can only under-count what the game could remove.
+    /// The dealer's packaged product stock in units (stack size x package amount), one entry per slot with its quality
+    /// tier (Phase 05). Unpackaged or unreadable items are left out, so the snapshot can only under-count what the game
+    /// could remove.
     /// </summary>
     public static DealerStock? Stock(Dealer dealer)
     {
@@ -80,7 +83,7 @@ internal static class GameDealers
                 }
 
                 var units = (long)product.Quantity * product.Amount;
-                stacks.Add(new InventoryStack("slot:" + i.ToString(CultureInfo.InvariantCulture), key, (int)Math.Min(units, int.MaxValue)));
+                stacks.Add(new InventoryStack("slot:" + i.ToString(CultureInfo.InvariantCulture), key, (int)Math.Min(units, int.MaxValue), GameSales.QualityOf(product)));
             }
         }
 
@@ -162,8 +165,43 @@ internal static class GameDealers
         }
     }
 
+    /// <summary>
+    /// Records a dealer seen on its tick for the menu's override list (Phase 05): id, name (<c>NPC.FullName</c>) and
+    /// whether it is hired (<c>Dealer.IsRecruited</c>). Read-only; rebuilt per save.
+    /// </summary>
+    public static void Observe(Dealer dealer)
+    {
+        var id = DealerId(dealer);
+        if (id is null || (Seen.Count >= 64 && !Seen.ContainsKey(id)))
+        {
+            return;
+        }
+
+        var hired = dealer.IsRecruited;
+        if (Seen.TryGetValue(id, out var known) && known.Hired == hired)
+        {
+            return;
+        }
+
+        string? name = null;
+        try
+        {
+            name = dealer.FullName;
+        }
+        catch (Exception)
+        {
+            // the id is shown instead
+        }
+
+        Seen[id] = new DealerInfo(id, name, hired);
+    }
+
+    /// <summary>Dealers seen in this save, for the menu.</summary>
+    public static IReadOnlyList<DealerInfo> SeenDealers() => new List<DealerInfo>(Seen.Values);
+
     public static void Reset()
     {
+        Seen.Clear();
         DealerIds.Clear();
         NextReconcile.Clear();
         NextNotify.Clear();

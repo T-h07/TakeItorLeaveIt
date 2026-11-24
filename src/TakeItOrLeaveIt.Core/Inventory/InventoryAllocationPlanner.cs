@@ -13,7 +13,8 @@ namespace TakeItOrLeaveIt.Core.Inventory;
 /// removes, reserves or modifies anything.</para>
 /// <para><b>Deterministic strategy:</b>
 /// (1) drop invalid stacks, and every occurrence of a duplicated stack id;
-/// (2) keep stacks whose product passes <see cref="SaleEligibilityPolicy.Evaluate"/>;
+/// (2) keep stacks whose product passes <see cref="SaleEligibilityPolicy.Evaluate"/> and whose quality passes
+/// <see cref="SaleEligibilityPolicy.CheckQuality"/> (Phase 05);
 /// (3) sort the eligible stacks by stack id (ordinal), so input order never matters;
 /// (4) take <c>min(remaining, stack quantity)</c> from each in that order until the request is met.
 /// Mixed products are combined automatically when more than one is eligible.</para>
@@ -73,13 +74,14 @@ public static class InventoryAllocationPlanner
             else
             {
                 var decision = SaleEligibilityPolicy.Evaluate(policy, snapshot, category, stack.Product);
-                if (decision.IsEligible)
+                var reason = decision.IsEligible ? SaleEligibilityPolicy.CheckQuality(policy, category, stack.Quality) : decision.Reason;
+                if (reason == EligibilityReason.Allowed)
                 {
                     valid.Add(stack);
                 }
                 else
                 {
-                    rejections.Add(new StackRejection(stack.StackId, StackRejectionReason.Ineligible, decision.Reason));
+                    rejections.Add(new StackRejection(stack.StackId, StackRejectionReason.Ineligible, reason));
                 }
             }
         }
@@ -114,7 +116,7 @@ public static class InventoryAllocationPlanner
             }
 
             var take = Math.Min(remaining, stack.Quantity);
-            allocations.Add(new StackAllocation(stack.StackId, stack.Product, take));
+            allocations.Add(new StackAllocation(stack.StackId, stack.Product, take, stack.Quality));
             remaining -= take;
         }
 

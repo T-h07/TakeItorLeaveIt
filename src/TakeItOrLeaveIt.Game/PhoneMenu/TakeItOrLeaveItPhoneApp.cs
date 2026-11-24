@@ -44,7 +44,12 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
     private Text _saveLabel = null!;
     private Button _discardButton = null!;
     private Text _discardLabel = null!;
-    private readonly (Button Button, Text Label, MenuScreen Screen)[] _nav = new (Button, Text, MenuScreen)[4];
+    private static readonly MenuScreen[] NavScreens =
+    {
+        MenuScreen.Overview, MenuScreen.Products, MenuScreen.Rules, MenuScreen.Sales, MenuScreen.Presets, MenuScreen.Settings, MenuScreen.Diagnostics,
+    };
+
+    private readonly (Button Button, Text Label, MenuScreen Screen)[] _nav = new (Button, Text, MenuScreen)[NavScreens.Length];
 
     // Screens
     private GameObject _listScreen = null!;
@@ -255,14 +260,14 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
     private void BuildNav(Transform root)
     {
         _navPanel = UiKit.Panel("Nav", root, Theme.Surface);
-        UiKit.VStack(_navPanel, 8f, 10);
+        // Seven entries (Phase 05) at 34 px fit the 450 px minimum height; the sales notice lives on the Overview screen.
+        UiKit.VStack(_navPanel, 6f, 8);
         _navPanel.AddComponent<RectMask2D>();
 
-        var screens = new[] { MenuScreen.Overview, MenuScreen.Products, MenuScreen.Settings, MenuScreen.Diagnostics };
-        for (var i = 0; i < screens.Length; i++)
+        for (var i = 0; i < NavScreens.Length; i++)
         {
-            var screen = screens[i];
-            var (button, label) = UiKit.Button(_navPanel.transform, screen.ToString(), Theme.SurfaceRaised, -1f, 42f, () => OpenScreen(screen), 16, 0f);
+            var screen = NavScreens[i];
+            var (button, label) = UiKit.Button(_navPanel.transform, screen.ToString(), Theme.SurfaceRaised, -1f, 34f, () => OpenScreen(screen), 15, 0f);
             label.alignment = TextAnchor.MiddleLeft;
             var rt = label.GetComponent<RectTransform>();
             rt.offsetMin = new Vector2(12f, 0f);
@@ -272,7 +277,6 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
 
         var spacer = UiKit.Node("Spacer", _navPanel.transform);
         UiKit.Size(spacer).flexibleHeight = 1f;
-        UiKit.Label(_navPanel.transform, MenuText.SalesNotice, 13, Theme.TextFaint, anchor: TextAnchor.LowerLeft);
     }
 
     private void BuildProductsScreen(Transform body)
@@ -384,6 +388,15 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
             case MenuScreen.Diagnostics:
                 RenderList(RenderDiagnostics);
                 break;
+            case MenuScreen.Rules:
+                RenderList(RenderRules);
+                break;
+            case MenuScreen.Sales:
+                RenderList(RenderSales);
+                break;
+            case MenuScreen.Presets:
+                RenderList(RenderPresets);
+                break;
             default:
                 RenderList(RenderOverview);
                 break;
@@ -420,7 +433,7 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
         foreach (var (button, label, screen) in _nav)
         {
             var active = menu.Screen == screen;
-            var enabled = screen != MenuScreen.Products || menu.Availability == MenuAvailability.Ready;
+            var enabled = (screen != MenuScreen.Products && screen != MenuScreen.Rules) || menu.Availability == MenuAvailability.Ready;
             UiKit.SetButton(button, label, screen.ToString(), active ? Theme.AccentMuted : Theme.SurfaceRaised, enabled);
             label.alignment = TextAnchor.MiddleLeft;
         }
@@ -449,6 +462,13 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
         Line(c, menu.ActiveSaveLabel is null ? "Active save: none" : $"Active save: {menu.ActiveSaveLabel}", Theme.TextMuted);
         Line(c, "Status: " + menu.AvailabilityText, menu.Availability == MenuAvailability.Ready ? Theme.Success : Theme.Warning);
         Line(c, MenuText.SalesNotice, Theme.TextFaint, Theme.SmallSize);
+        Line(c, $"Preset: {menu.ActivePresetLabel}  -  Player sales {(menu.PlayerSalesEnabled ? "on" : "off")}  -  Dealer sales {(menu.DealerSalesEnabled ? "on" : "off")}  -  Mixing: {PolicyPresets.MixingLabel(menu.Mixing)}",
+            Theme.TextMuted, Theme.SmallSize);
+        if (menu.EditingDealer is not null)
+        {
+            Line(c, $"Showing {menu.ScopeLabel}. Switch back to the global rules on the Sales screen.", Theme.Warning, Theme.SmallSize);
+        }
+
         if (!menu.IsModEnabled)
         {
             Line(c, "The mod is OFF for this save: new customer orders use vanilla rules. Orders already accepted keep their rules.", Theme.Warning);
@@ -472,6 +492,11 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
             UiKit.Label(card.transform, category.DisplayName, Theme.HeadingSize, Theme.Text, FontStyle.Bold);
             UiKit.Label(card.transform, $"{category.ModeLabel}  -  {category.EligibleLabel}  (of {category.UnlockedCount} unlocked)", Theme.BodySize,
                 category.EligibleCount > 0 ? Theme.TextMuted : Theme.Warning);
+            if (category.RuleDetail.Length > 0)
+            {
+                UiKit.Label(card.transform, "Rules: " + category.RuleDetail, Theme.SmallSize, Theme.TextMuted);
+            }
+
             if (category.Warning is not null)
             {
                 UiKit.Label(card.transform, category.Warning, Theme.SmallSize, Theme.Warning);
@@ -497,15 +522,10 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
         var (discard, discardLabel) = UiKit.Button(row.transform, string.Empty, Theme.SurfaceRaised, 160f, 38f, () => menu.Discard(), 15, 110f);
         UiKit.SetButton(discard, discardLabel, "Discard changes", Theme.SurfaceRaised, menu.HasUnsavedChanges);
 
-        Heading(c, "Customer orders");
-        Line(c, "Mixed deliveries: allow one order to be filled with several permitted products of its category (for example 3 OG Kush + 2 Sour Diesel for 5 Weed). Applies to orders accepted after saving.", Theme.TextMuted, Theme.SmallSize);
-        var mixedRow = Row(c, 48f);
-        UiKit.Size(UiKit.Label(mixedRow.transform, "Mixed deliveries", Theme.BodySize, Theme.Text).gameObject, -1f, -1f, 1f, -1f, 0f);
-        var (mixed, mixedLabel) = UiKit.Button(mixedRow.transform, string.Empty, Theme.SurfaceRaised, 100f, 36f, () => menu.SetMixedDeliveries(!menu.MixedDeliveries), 15, 80f);
-        UiKit.SetButton(mixed, mixedLabel, menu.MixedDeliveries ? "ON" : "OFF", menu.MixedDeliveries ? Theme.Accent : Theme.DangerMuted, menu.CanEdit);
+        Line(c, "Mixing, player and dealer sales and dealer overrides are on the Sales screen; quality and effect rules on the Rules screen; presets on the Presets screen.", Theme.TextMuted, Theme.SmallSize);
 
         Heading(c, "Reset");
-        Line(c, "Sets every category to Any Unlocked, clears all selections, turns mixed deliveries and the mod on. Press Save afterwards to keep it.", Theme.TextMuted, Theme.SmallSize);
+        Line(c, "Sets every category to Any Unlocked, clears all lists, effect and quality rules and dealer overrides, and turns every switch on. Press Save afterwards to keep it.", Theme.TextMuted, Theme.SmallSize);
         var resetRow = Row(c, 48f);
         if (menu.IsResetPending)
         {
@@ -518,8 +538,6 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
             UiKit.SetButton(reset, resetLabel, "Reset to defaults...", Theme.DangerMuted, menu.CanEdit);
         }
 
-        Heading(c, "Coming in later phases");
-        Line(c, "Dealer sales rules (Phase 04) and quality/effect rules (Phase 05) are not configurable yet.", Theme.TextFaint, Theme.SmallSize);
     }
 
     private void RenderDiagnostics(Transform c)
@@ -543,6 +561,23 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
             }
         }
 
+        Heading(c, "Rule engine (Phase 05)");
+        var draft = menu.Saved;
+        Line(c, $"Settings schema {PolicyConfiguration.CurrentSchemaVersion}; preset {PolicyPresets.DetectLabel(draft)}; mixing {PolicyPresets.MixingLabel(draft.Mixing)}", Theme.TextMuted, Theme.SmallSize);
+        Line(c, $"Scopes: player sales {(draft.PlayerSalesEnabled ? "on" : "off")}, dealer sales {(draft.DealerSalesEnabled ? "on" : "off")}, {draft.DealerOverrides.Count} dealer(s) with overrides", Theme.TextMuted, Theme.SmallSize);
+        if (snapshot is not null)
+        {
+            var all = snapshot.Categories.SelectMany(cat => snapshot.GetProducts(cat.Key)).ToList();
+            var noAncestry = all.Count(p => !p.AncestryKnown);
+            var noEffects = all.Count(p => !p.EffectsKnown);
+            Line(c, $"Lineage: {all.Count - noAncestry} of {all.Count} products from recorded mix recipes" + (noAncestry > 0 ? $"; {noAncestry} unknown (base-strain rules match them only directly)" : string.Empty),
+                noAncestry > 0 ? Theme.Warning : Theme.TextMuted, Theme.SmallSize);
+            if (noEffects > 0)
+            {
+                Line(c, $"Effects unreadable for {noEffects} product(s): they never pass an effect rule.", Theme.Warning, Theme.SmallSize);
+            }
+        }
+
         Heading(c, "Player and dealer sales");
         foreach (var line in menu.SalesStatus?.Invoke() ?? new[] { "Player Sales: status unavailable" })
         {
@@ -563,10 +598,10 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
         var summary = menu.GetSelectedCategorySummary();
         UiKit.Clear(_modes);
         var editable = menu.CanEdit && summary is not null;
-        foreach (var mode in new[] { PolicyMode.AnyUnlocked, PolicyMode.SelectedOnly, PolicyMode.Disabled })
+        foreach (var mode in new[] { PolicyMode.AnyUnlocked, PolicyMode.SelectedOnly, PolicyMode.Blocklist, PolicyMode.Disabled })
         {
             var m = mode;
-            var (button, label) = UiKit.Button(_modes, MenuText.ModeLabel(m), Theme.SurfaceRaised, 140f, 36f, () => menu.SetMode(menu.SelectedCategory, m), 14, 96f);
+            var (button, label) = UiKit.Button(_modes, MenuText.ModeLabel(m), Theme.SurfaceRaised, 140f, 36f, () => menu.SetMode(menu.SelectedCategory, m), 14, 90f);
             var active = summary is not null && summary.Mode == m;
             UiKit.SetButton(button, label, MenuText.ModeLabel(m), active ? Theme.Accent : Theme.SurfaceRaised, editable);
         }
@@ -574,9 +609,11 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
         _modeDescription.text = summary is null ? MenuText.WaitingForProducts : MenuText.ModeDescription(summary.Mode);
 
         var selectionActive = editable && summary!.Mode != PolicyMode.Disabled;
-        UiKit.SetButton(_selectAllButton, _selectAllLabel, "Select all unlocked", Theme.SurfaceRaised, selectionActive);
-        UiKit.SetButton(_selectVisibleButton, _selectVisibleLabel, "Select shown", Theme.SurfaceRaised, selectionActive);
-        UiKit.SetButton(_clearButton, _clearLabel, "Clear", Theme.SurfaceRaised, editable && summary!.SelectedCount > 0);
+        var blocking = summary?.Mode == PolicyMode.Blocklist;
+        var listed = menu.GetSelectedRule() is { } rule ? (blocking ? rule.BlockedProducts.Count : rule.SelectedProducts.Count) : 0;
+        UiKit.SetButton(_selectAllButton, _selectAllLabel, blocking ? "Block all unlocked" : "Select all unlocked", Theme.SurfaceRaised, selectionActive);
+        UiKit.SetButton(_selectVisibleButton, _selectVisibleLabel, blocking ? "Block shown" : "Select shown", Theme.SurfaceRaised, selectionActive);
+        UiKit.SetButton(_clearButton, _clearLabel, "Clear", Theme.SurfaceRaised, editable && listed > 0);
         if (!string.Equals(_search.text, menu.SearchText, StringComparison.Ordinal) && !_search.isFocused)
         {
             _search.text = menu.SearchText; // e.g. cleared after a save switch
@@ -592,8 +629,11 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
             return;
         }
 
-        _productSummary.text = summary.Warning
-            ?? $"{summary.DisplayName}: {summary.ModeLabel}  -  {summary.EligibleLabel}  -  {summary.SelectedCount} selected  -  {summary.UnlockedCount} unlocked";
+        var scope = menu.EditingDealer is null ? string.Empty : $"[{menu.ScopeLabel}{(summary.IsDealerOverride ? string.Empty : ", global rule")}]  ";
+        var listWord = summary.Mode == PolicyMode.Blocklist ? "blocked" : "selected";
+        var rules = summary.RuleDetail.Length > 0 ? $"  -  {summary.RuleDetail}" : string.Empty;
+        _productSummary.text = scope + (summary.Warning
+            ?? $"{summary.DisplayName}: {summary.ModeLabel}  -  {summary.EligibleLabel}  -  {listed} {listWord}  -  {summary.UnlockedCount} unlocked{rules}");
         _productSummary.color = summary.Warning is null ? Theme.Text : Theme.Warning;
 
         RenderRows(menu, summary);
@@ -626,7 +666,7 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
             UiKit.VStack(texts, 0f, 0);
             UiKit.Size(texts, -1f, -1f, 1f, -1f, 100f);
             UiKit.Label(texts.transform, row.DisplayName, Theme.BodySize, row.IsSelectable ? Theme.Text : Theme.TextFaint, FontStyle.Bold);
-            UiKit.Label(texts.transform, row.Detail, Theme.SmallSize, Theme.TextFaint);
+            UiKit.Label(texts.transform, row.Lineage.Length > 0 ? row.Lineage + " · " + row.Detail : row.Detail, Theme.SmallSize, Theme.TextFaint);
 
             var status = UiKit.Label(panel.transform, row.StatusLabel, Theme.SmallSize, row.IsEligible ? Theme.Success : Theme.TextMuted, anchor: TextAnchor.MiddleRight);
             UiKit.Size(status.gameObject, 130f, -1f, -1f, -1f, 80f);
@@ -679,11 +719,225 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
         UiKit.Label(_preview, preview.Disclaimer, Theme.SmallSize, Theme.TextFaint, FontStyle.Italic);
     }
 
+    private void RenderRules(Transform c)
+    {
+        var menu = _menu!;
+        Heading(c, "Rules - " + menu.ScopeLabel);
+        if (menu.Availability != MenuAvailability.Ready)
+        {
+            Line(c, menu.AvailabilityText, Theme.Warning);
+            return;
+        }
+
+        var tabs = Row(c, 40f);
+        foreach (var category in menu.GetCategories())
+        {
+            var key = category.Key;
+            var (tab, label) = UiKit.Button(tabs.transform, category.DisplayName, Theme.SurfaceRaised, 120f, 34f, () => menu.SelectCategory(key), 14, 64f);
+            UiKit.SetButton(tab, label, category.DisplayName, key == menu.SelectedCategory ? Theme.AccentMuted : Theme.SurfaceRaised, true);
+        }
+
+        var summary = menu.GetSelectedCategorySummary();
+        var rule = menu.GetSelectedRule();
+        if (summary is null || rule is null)
+        {
+            Line(c, "Pick a category.", Theme.TextMuted);
+            return;
+        }
+
+        var cat = summary.Key;
+        var edit = menu.CanEdit;
+        Line(c, $"{summary.DisplayName}: {summary.ModeLabel}  -  {summary.EligibleLabel}", summary.EligibleCount > 0 ? Theme.Text : Theme.Warning);
+        if (summary.Warning is not null)
+        {
+            Line(c, summary.Warning, Theme.Warning, Theme.SmallSize);
+        }
+
+        if (menu.EditingDealer is not null)
+        {
+            var scopeRow = Row(c, 44f);
+            UiKit.Size(UiKit.Label(scopeRow.transform, summary.IsDealerOverride ? "This dealer has its own rule for this category." : "This dealer uses the global rule; any change creates an override.",
+                Theme.SmallSize, Theme.TextMuted).gameObject, -1f, -1f, 1f, -1f, 0f);
+            var (useGlobal, useGlobalLabel) = UiKit.Button(scopeRow.transform, string.Empty, Theme.SurfaceRaised, 150f, 34f, () => menu.UseGlobalRule(cat), 14, 100f);
+            UiKit.SetButton(useGlobal, useGlobalLabel, "Use global rule", Theme.SurfaceRaised, edit && summary.IsDealerOverride);
+        }
+
+        Heading(c, "List matching");
+        Line(c, MenuText.MatchDescription(rule.Match), Theme.TextMuted, Theme.SmallSize);
+        var matchRow = Row(c, 44f);
+        foreach (var match in new[] { SelectionMatch.ExactProduct, SelectionMatch.BaseStrain })
+        {
+            var m = match;
+            var (button, label) = UiKit.Button(matchRow.transform, string.Empty, Theme.SurfaceRaised, 220f, 34f, () => menu.SetMatch(cat, m), 14, 120f);
+            UiKit.SetButton(button, label, MenuText.MatchLabel(m), rule.Match == m ? Theme.Accent : Theme.SurfaceRaised, edit);
+        }
+
+        if (rule.Mode is not (PolicyMode.SelectedOnly or PolicyMode.Blocklist))
+        {
+            Line(c, "Matching applies to the allowed or blocked list (Selected Only or Blocklist mode on the Products screen).", Theme.TextFaint, Theme.SmallSize);
+        }
+
+        Heading(c, "Minimum quality");
+        Line(c, "Items below this tier are refused at handover and never reserved from dealer stock. Customers keep their own quality standard.", Theme.TextMuted, Theme.SmallSize);
+        var qualityRow = Row(c, 44f);
+        foreach (var tier in new QualityTier?[] { null, QualityTier.Poor, QualityTier.Standard, QualityTier.Premium, QualityTier.Heavenly })
+        {
+            var t = tier;
+            var (button, label) = UiKit.Button(qualityRow.transform, string.Empty, Theme.SurfaceRaised, 110f, 34f, () => menu.SetMinimumQuality(cat, t), 14, 70f);
+            UiKit.SetButton(button, label, t is null ? "Any" : QualityTiers.Label(t.Value) + "+", rule.MinimumQuality == t ? Theme.Accent : Theme.SurfaceRaised, edit);
+        }
+
+        Heading(c, "Effects");
+        Line(c, "Tap an effect to cycle Any -> Required -> Excluded. Excluded effects always win. Products whose effects could not be read never pass an effect rule.", Theme.TextMuted, Theme.SmallSize);
+        var effectMatchRow = Row(c, 44f);
+        foreach (var match in new[] { EffectMatch.All, EffectMatch.Any })
+        {
+            var m = match;
+            var (button, label) = UiKit.Button(effectMatchRow.transform, string.Empty, Theme.SurfaceRaised, 190f, 34f, () => menu.SetEffectMatch(cat, m), 14, 110f);
+            UiKit.SetButton(button, label, m == EffectMatch.All ? "Require all" : "Require any", rule.Effects.Match == m ? Theme.Accent : Theme.SurfaceRaised, edit);
+        }
+
+        var (clear, clearLabel) = UiKit.Button(effectMatchRow.transform, string.Empty, Theme.SurfaceRaised, 110f, 34f, () => menu.ClearEffects(cat), 14, 70f);
+        UiKit.SetButton(clear, clearLabel, "Clear", Theme.SurfaceRaised, edit && !rule.Effects.IsEmpty);
+
+        var effects = menu.GetEffectRows();
+        if (effects.Count == 0)
+        {
+            Line(c, "No effects are known for this category yet.", Theme.TextFaint, Theme.SmallSize);
+        }
+
+        foreach (var effect in effects)
+        {
+            var id = effect.Id;
+            var row = Row(c, 40f);
+            var name = effect.OnDiscoveredProduct ? id : id + " (no discovered product has it)";
+            UiKit.Size(UiKit.Label(row.transform, name, Theme.BodySize, effect.IsConflicting ? Theme.Warning : effect.OnDiscoveredProduct ? Theme.Text : Theme.TextFaint).gameObject,
+                -1f, -1f, 1f, -1f, 0f);
+            var color = effect.State switch
+            {
+                EffectState.Required => Theme.Accent,
+                EffectState.Excluded => Theme.DangerMuted,
+                _ => Theme.SurfaceRaised,
+            };
+            var (button, label) = UiKit.Button(row.transform, string.Empty, color, 120f, 32f, () => menu.CycleEffect(cat, id), 14, 90f);
+            UiKit.SetButton(button, label, effect.StateLabel, color, edit);
+        }
+    }
+
+    private void RenderSales(Transform c)
+    {
+        var menu = _menu!;
+        var edit = menu.CanEdit;
+        Heading(c, "Sales");
+        Line(c, "Switches apply to contracts accepted after saving. Accepted orders keep their rules, and dealer appointments keep their reservations.", Theme.TextMuted, Theme.SmallSize);
+
+        Switch(c, "Player sales (your own customers)", menu.PlayerSalesEnabled, () => menu.SetPlayerSales(!menu.PlayerSalesEnabled), edit);
+        Switch(c, "Dealer sales (your hired dealers)", menu.DealerSalesEnabled, () => menu.SetDealerSales(!menu.DealerSalesEnabled), edit);
+        if (!menu.IsModEnabled)
+        {
+            Line(c, "The mod is off for this save, so both paths use vanilla rules (Overview screen).", Theme.Warning, Theme.SmallSize);
+        }
+
+        Heading(c, "Mixing");
+        foreach (var mixing in new[] { MixingMode.AnyPermitted, MixingMode.SingleProduct, MixingMode.SingleBaseStrain, MixingMode.RequestedOnly })
+        {
+            var m = mixing;
+            var row = Row(c, 44f);
+            var (button, label) = UiKit.Button(row.transform, string.Empty, Theme.SurfaceRaised, 190f, 34f, () => menu.SetMixing(m), 14, 120f);
+            var text = PolicyPresets.MixingLabel(m);
+            UiKit.SetButton(button, label, char.ToUpperInvariant(text[0]) + text.Substring(1), menu.Mixing == m ? Theme.Accent : Theme.SurfaceRaised, edit);
+            UiKit.Size(UiKit.Label(row.transform, MenuText.MixingDescription(m), Theme.SmallSize, Theme.TextMuted).gameObject, -1f, -1f, 1f, -1f, 0f);
+        }
+
+        Line(c, "Fair pricing always applies: a substitute must be worth at least what the customer agreed to pay.", Theme.TextFaint, Theme.SmallSize);
+
+        Heading(c, "Rules being edited: " + menu.ScopeLabel);
+        var globalRow = Row(c, 44f);
+        var (global, globalLabel) = UiKit.Button(globalRow.transform, string.Empty, Theme.SurfaceRaised, 190f, 34f, () => menu.EditDealer(null), 14, 120f);
+        UiKit.SetButton(global, globalLabel, "Edit global rules", menu.EditingDealer is null ? Theme.Accent : Theme.SurfaceRaised, true);
+        Line(c, "A dealer override replaces the global rule of one category for that dealer only. It never bypasses the switches, unlocks or fair pricing.", Theme.TextMuted, Theme.SmallSize);
+
+        var dealers = menu.GetDealers();
+        if (dealers.Count == 0)
+        {
+            Line(c, "No dealers seen yet in this session. Dealers appear here once the game has updated them.", Theme.TextFaint, Theme.SmallSize);
+        }
+
+        foreach (var dealer in dealers)
+        {
+            var id = dealer.Id;
+            var card = UiKit.Panel("Dealer", c, Theme.SurfaceRaised);
+            UiKit.VStack(card, 2f, 8);
+            UiKit.Label(card.transform, dealer.Name, Theme.BodySize, Theme.Text, FontStyle.Bold);
+            UiKit.Label(card.transform, dealer.Status, Theme.SmallSize, dealer.Known && dealer.Hired ? Theme.TextMuted : Theme.TextFaint);
+            var row = Row(card.transform, 40f);
+            var (editButton, editLabel) = UiKit.Button(row.transform, string.Empty, Theme.SurfaceRaised, 170f, 32f, () => menu.EditDealer(id), 14, 110f);
+            UiKit.SetButton(editButton, editLabel, dealer.IsEditing ? "Editing" : "Edit overrides", dealer.IsEditing ? Theme.Accent : Theme.SurfaceRaised, true);
+            var (removeButton, removeLabel) = UiKit.Button(row.transform, string.Empty, Theme.DangerMuted, 170f, 32f, () => menu.RemoveDealerOverrides(id), 14, 110f);
+            UiKit.SetButton(removeButton, removeLabel, "Remove overrides", Theme.DangerMuted, edit && dealer.OverrideCount > 0);
+        }
+    }
+
+    private void RenderPresets(Transform c)
+    {
+        var menu = _menu!;
+        Heading(c, "Presets");
+        Line(c, "Current rules: " + menu.ActivePresetLabel, Theme.Text);
+        Line(c, "A preset only changes your draft. You see what changes first; press Save to keep it or Discard to undo.", Theme.TextMuted, Theme.SmallSize);
+
+        if (menu.PendingPreset is { } pending)
+        {
+            var card = UiKit.Panel("Pending", c, Theme.SurfaceRaised);
+            UiKit.VStack(card, 2f, 10);
+            UiKit.Label(card.transform, "Apply " + PolicyPresets.Label(pending) + "?", Theme.HeadingSize, Theme.Warning, FontStyle.Bold);
+            UiKit.Label(card.transform, menu.PresetPreview.Count == 0 ? "Nothing would change." : "This replaces these parts of your draft:", Theme.SmallSize, Theme.TextMuted);
+            foreach (var line in menu.PresetPreview)
+            {
+                UiKit.Label(card.transform, "- " + line, Theme.SmallSize, line.StartsWith("Warning", StringComparison.Ordinal) ? Theme.Warning : Theme.Text);
+            }
+
+            var row = Row(card.transform, 44f);
+            UiKit.Button(row.transform, "Apply to draft", Theme.Accent, 170f, 36f, () => menu.ConfirmPreset(), 14, 110f);
+            UiKit.Button(row.transform, "Cancel", Theme.SurfaceRaised, 110f, 36f, () => menu.CancelPreset(), 14, 80f);
+        }
+
+        foreach (var preset in PolicyPresets.All)
+        {
+            var p = preset;
+            var card = UiKit.Panel("Preset", c, Theme.SurfaceRaised);
+            UiKit.VStack(card, 2f, 10);
+            UiKit.Label(card.transform, PolicyPresets.Label(p), Theme.BodySize, Theme.Text, FontStyle.Bold);
+            UiKit.Label(card.transform, PolicyPresets.Description(p), Theme.SmallSize, Theme.TextMuted);
+            var row = Row(card.transform, 40f);
+            var (button, label) = UiKit.Button(row.transform, string.Empty, Theme.SurfaceRaised, 170f, 32f, () => menu.RequestPreset(p), 14, 110f);
+            UiKit.SetButton(button, label, "Preview changes", Theme.SurfaceRaised, menu.CanEdit);
+        }
+    }
+
+    private static void Switch(Transform c, string text, bool on, Action toggle, bool enabled)
+    {
+        var row = Row(c, 48f);
+        UiKit.Size(UiKit.Label(row.transform, text, Theme.BodySize, Theme.Text).gameObject, -1f, -1f, 1f, -1f, 0f);
+        var (button, label) = UiKit.Button(row.transform, string.Empty, Theme.SurfaceRaised, 100f, 36f, toggle, 15, 80f);
+        UiKit.SetButton(button, label, on ? "ON" : "OFF", on ? Theme.Accent : Theme.DangerMuted, enabled);
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private void OpenScreen(MenuScreen screen)
     {
         var menu = _menu!;
+        if (screen == MenuScreen.Rules)
+        {
+            menu.Navigate(screen);
+            if (!menu.SelectedCategory.IsValid && menu.GetCategories().FirstOrDefault() is { } firstRules)
+            {
+                menu.SelectCategory(firstRules.Key);
+            }
+
+            return;
+        }
+
         if (screen == MenuScreen.Products)
         {
             if (!menu.SelectedCategory.IsValid)

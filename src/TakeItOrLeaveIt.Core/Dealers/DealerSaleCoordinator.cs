@@ -270,7 +270,7 @@ public sealed class DealerSaleCoordinator
             return new DealerOrderCreation(OrderOutcome.InvalidContract, null, null, "Dealer could not be identified: vanilla rules.");
         }
 
-        var creation = CategoryOrderFactory.CreateForDealer(request, _policies.Current, _catalog(), Prices);
+        var creation = CategoryOrderFactory.CreateForDealer(request, _policies.Current, _catalog(), Prices, dealerId);
         if (!creation.IsManaged)
         {
             return new DealerOrderCreation(creation.Outcome, null, null, creation.Detail);
@@ -314,7 +314,15 @@ public sealed class DealerSaleCoordinator
     public DeliveryValidation? Validate(string? contractId, IReadOnlyList<DeliveredItem?> items)
     {
         var appointment = Find(contractId);
-        return appointment is null ? null : DeliveryValidator.Validate(appointment.Order, items, _catalog());
+        if (appointment is null)
+        {
+            return null;
+        }
+
+        var catalog = _catalog();
+        var live = _policies.Current?.ForScope(SalesScope.Dealer(appointment.DealerId));
+        return DeliveryValidator.Validate(appointment.Order, items, catalog,
+            product => RuleExplainer.ExplainNotAllowed(appointment.Order, live, catalog, product));
     }
 
     /// <summary>
@@ -488,16 +496,25 @@ public sealed class DealerSaleCoordinator
     /// permit for its category, so the dealer must hand over nothing instead of the excluded product. False when
     /// the mod does not apply (off, not the host, not ready): the contract is vanilla.
     /// </summary>
-    public bool BlocksUnmanaged(OrderRequest? request, out string reason)
+    public bool BlocksUnmanaged(OrderRequest? request, out string reason) => BlocksUnmanaged(request, null, out reason);
+
+    /// <summary>
+    /// The same guard for the dealer who holds the contract: that dealer's effective rules (overrides included).
+    /// Never blocks while dealer sales are switched off (Phase 05): the contract is then vanilla.
+    /// </summary>
+    public bool BlocksUnmanaged(OrderRequest? request, string? dealerId, out string reason)
     {
         reason = string.Empty;
         var catalog = _catalog();
-        var policy = _policies.Current;
+        var configured = _policies.Current;
+        var scope = SalesScope.Dealer(dealerId);
         if (request is null || !IsAuthoritative || SaveIdentity is null || (PolicyReady is not null && !PolicyReady()) ||
-            policy is null || !policy.Enabled || catalog is null || Find(request.ContractId) is not null)
+            configured is null || !configured.IsPathEnabled(scope) || catalog is null || Find(request.ContractId) is not null)
         {
             return false;
         }
+
+        var policy = configured.ForScope(scope);
 
         foreach (var line in request.Lines)
         {

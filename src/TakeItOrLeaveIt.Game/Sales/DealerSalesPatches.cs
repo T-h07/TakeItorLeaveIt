@@ -77,7 +77,7 @@ internal sealed class DealerSalesPatches : IPatchModule
             managed = coordinator.Find(id) is not null;
             if (!managed)
             {
-                if (coordinator.BlocksUnmanaged(GameSales.ToRequest(contract, isPlayerContract: false), out var reason))
+                if (coordinator.BlocksUnmanaged(GameSales.ToRequest(contract, isPlayerContract: false), GameDealers.DealerId(__instance), out var reason))
                 {
                     items ??= new ItemList();
                     GameSales.Once("dealer-blocked:" + id, $"Dealer contract {id}: {reason}; the dealer hands over nothing (excluded products are never sold).", warning: true);
@@ -128,7 +128,9 @@ internal sealed class DealerSalesPatches : IPatchModule
             foreach (var line in plan.Lines)
             {
                 removalStarted = true;
-                var removed = __instance.RemoveAndReturnProductFromInventory(line.Product.Value, line.Units, targetQuality);
+                // Phase 05: never below the reserved lot's tier (which already meets the order's minimum).
+                var minimum = line.Quality is { } lot && (int)lot > (int)targetQuality ? (EQuality)(int)lot : targetQuality;
+                var removed = __instance.RemoveAndReturnProductFromInventory(line.Product.Value, line.Units, minimum);
                 if (removed is null)
                 {
                     continue;
@@ -213,6 +215,7 @@ internal sealed class DealerSalesPatches : IPatchModule
         {
             if (__instance is not null)
             {
+                GameDealers.Observe(__instance);
                 GameDealers.MaybeReconcile(__instance);
                 GameDealers.MaybeNotify(__instance);
             }

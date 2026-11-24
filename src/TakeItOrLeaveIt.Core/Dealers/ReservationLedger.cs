@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using TakeItOrLeaveIt.Core.Discovery;
 using TakeItOrLeaveIt.Core.Inventory;
+using TakeItOrLeaveIt.Core.Policies;
 using TakeItOrLeaveIt.Core.Products;
 using TakeItOrLeaveIt.Core.Sales;
 
@@ -33,20 +34,26 @@ public enum ReservationState
     Invalidated,
 }
 
-/// <summary>Units of one product a reservation holds or will draw.</summary>
+/// <summary>Units of one product (at one quality tier, Phase 05) a reservation holds or will draw.</summary>
 public sealed class ReservationLine
 {
-    internal ReservationLine(ProductKey product, int units)
+    internal ReservationLine(ProductKey product, int units, QualityTier? quality = null)
     {
         Product = product;
         Units = units;
+        Quality = quality;
     }
 
     public ProductKey Product { get; }
 
     public int Units { get; }
 
-    public override string ToString() => $"{Units} x {Product}";
+    /// <summary>The lot's quality tier; null when unknown (only reserved for orders without a quality minimum).</summary>
+    public QualityTier? Quality { get; }
+
+    public StockLot Lot => new(Product, Quality);
+
+    public override string ToString() => Quality is { } q ? $"{Units} x {Product} ({q})" : $"{Units} x {Product}";
 }
 
 /// <summary>One contract's claim on one dealer's stock. Only <see cref="ReservationLedger"/> changes it.</summary>
@@ -168,7 +175,7 @@ public sealed class ReserveResult
 public sealed class ReservationLedger
 {
     private readonly Dictionary<string, Reservation> _byContract = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, Dictionary<ProductKey, long>> _held = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Dictionary<StockLot, long>> _held = new(StringComparer.Ordinal);
     private long _sequence;
 
     /// <summary>Holding reservations (Reserved or Committing).</summary>
@@ -193,25 +200,41 @@ public sealed class ReservationLedger
         return false;
     }
 
+    /// <summary>Held units of a product over all its quality lots.</summary>
     public long HeldUnits(string dealerId, ProductKey product)
-        => _held.TryGetValue(dealerId, out var byProduct) && byProduct.TryGetValue(product, out var units) ? units : 0;
+        => _held.TryGetValue(dealerId, out var byLot) ? byLot.Where(p => p.Key.Product == product).Sum(p => p.Value) : 0;
 
-    /// <summary>Units of <paramref name="product"/> the dealer has that no other appointment holds.</summary>
+    public long HeldUnits(string dealerId, StockLot lot)
+        => _held.TryGetValue(dealerId, out var byLot) && byLot.TryGetValue(lot, out var units) ? units : 0;
+
+    /// <summary>Units of <paramref name="product"/> the dealer has that no other appointment holds (any quality).</summary>
     public long Available(DealerStock stock, ProductKey product, string? excludingContract = null)
+        => Available(stock, product, null, excludingContract);
+
+    /// <summary>
+    /// Unheld units of <paramref name="product"/> at or above <paramref name="minimum"/>, lot by lot (holds are per lot, so
+    /// a hold on Premium units never hides Standard ones and the reverse).
+    /// </summary>
+    public long Available(DealerStock stock, ProductKey product, QualityTier? minimum, string? excludingContract = null)
+        => stock.Lots.Where(l => l.Product == product && l.Meets(minimum)).Sum(l => Available(stock, l, excludingContract));
+
+    public long Available(DealerStock stock, StockLot lot, string? excludingContract = null)
     {
-        var held = HeldUnits(stock.DealerId, product);
+        var held = HeldUnits(stock.DealerId, lot);
         if (excludingContract is not null && _byContract.TryGetValue(excludingContract, out var own) && own.DealerId == stock.DealerId)
         {
-            held -= own.Lines.Where(l => l.Product == product).Sum(l => (long)l.Units);
+            held -= own.Lines.Where(l => l.Lot.Equals(lot)).Sum(l => (long)l.Units);
         }
 
-        return Math.Max(0, stock.UnitsOf(product) - held);
+        return Math.Max(0, stock.UnitsOf(lot) - held);
     }
 
     /// <summary>
     /// Reserves <see cref="CategoryOrder.RequiredUnits"/> eligible units of the dealer's stock for the order, or
-    /// changes nothing. Mixed deliveries off: one product with enough unreserved units (the one with the most,
-    /// ties by product id). Mixed on: the planner's deterministic draw across eligible products (by product id).
+    /// changes nothing. Only lots at or above the order's quality minimum count. Any mix allowed: the planner's
+    /// deterministic draw across eligible lots (by product, then lowest acceptable quality first). Otherwise one
+    /// combination group (one product, or one base strain) with enough unreserved units: the one with the most,
+    /// ties by group id.
     /// </summary>
     public ReserveResult TryReserve(CategoryOrder order, DealerStock stock, ProductCatalogSnapshot? catalog)
     {
@@ -227,39 +250,49 @@ public sealed class ReservationLedger
                 : new ReserveResult(ReserveOutcome.OwnerMismatch, existing, 0, $"Held by dealer {existing.DealerId}.");
         }
 
-        // Pool of unreserved units per product, one virtual stack per product (ids sort like product ids).
+        // Pool of unreserved units per lot, one virtual stack per lot (ids sort by product, then lowest quality first).
         var pool = new List<InventoryStack>();
-        long eligibleTotal = 0;
-        foreach (var product in order.AllowedProducts)
+        foreach (var lot in stock.Lots)
         {
-            var available = Available(stock, product);
+            if (!order.IsAllowed(lot.Product) || !lot.Meets(order.MinimumQuality))
+            {
+                continue;
+            }
+
+            var available = Available(stock, lot);
             if (available > 0)
             {
-                pool.Add(new InventoryStack(product.Value, product, (int)Math.Min(available, int.MaxValue)));
+                pool.Add(new InventoryStack(lot.Id, lot.Product, (int)Math.Min(available, int.MaxValue), lot.Quality));
             }
         }
 
         var policy = order.ToSnapshotPolicy();
-        AllocationPlan plan;
-        if (order.MixedDeliveries)
+        AllocationPlan? plan = null;
+        long eligibleTotal = 0;
+        var groups = pool.SelectMany(stack => order.GroupsOf(stack.Product)).Distinct(StringComparer.Ordinal).ToList();
+        if (groups.Count <= 1 && order.MixedDeliveries)
         {
             plan = InventoryAllocationPlanner.Plan(order.Category, order.RequiredUnits, pool, policy, catalog);
             eligibleTotal = plan.EligibleQuantityAvailable;
         }
         else
         {
-            plan = null!;
-            foreach (var single in pool.OrderByDescending(s => s.Quantity).ThenBy(s => s.StackId, StringComparer.Ordinal))
+            var candidates = groups
+                .Select(g => (Group: g, Stacks: pool.Where(stack => order.GroupsOf(stack.Product).Contains(g, StringComparer.Ordinal)).ToList()))
+                .Select(c => (c.Group, c.Stacks, Units: c.Stacks.Sum(stack => (long)stack.Quantity)))
+                .OrderByDescending(c => c.Units)
+                .ThenBy(c => c.Group, StringComparer.Ordinal);
+            foreach (var candidate in candidates)
             {
-                var candidate = InventoryAllocationPlanner.Plan(order.Category, order.RequiredUnits, new[] { single }, policy, catalog);
-                eligibleTotal = Math.Max(eligibleTotal, candidate.EligibleQuantityAvailable);
-                if (candidate.CanFulfill)
+                var attempt = InventoryAllocationPlanner.Plan(order.Category, order.RequiredUnits, candidate.Stacks, policy, catalog);
+                eligibleTotal = Math.Max(eligibleTotal, attempt.EligibleQuantityAvailable);
+                if (attempt.CanFulfill)
                 {
-                    plan = candidate;
+                    plan = attempt;
                     break;
                 }
 
-                plan ??= candidate;
+                plan ??= attempt;
             }
 
             plan ??= InventoryAllocationPlanner.Plan(order.Category, order.RequiredUnits, Array.Empty<InventoryStack>(), policy, catalog);
@@ -268,20 +301,22 @@ public sealed class ReservationLedger
         if (!plan.CanFulfill)
         {
             var outcome = plan.Failure == AllocationFailure.CategoryNotEligible ? ReserveOutcome.NotEligible : ReserveOutcome.InsufficientStock;
+            var quality = order.MinimumQuality is { } q ? $" at {q} or better" : string.Empty;
             var detail = order.MixedDeliveries
-                ? $"{eligibleTotal}/{order.RequiredUnits} eligible unreserved unit(s)."
-                : $"No single product has {order.RequiredUnits} eligible unreserved unit(s) (best {eligibleTotal}); mixing is off.";
+                ? $"{eligibleTotal}/{order.RequiredUnits} eligible unreserved unit(s){quality}."
+                : $"No single {(order.Mixing == MixingMode.SingleBaseStrain ? "base strain" : "product")} has {order.RequiredUnits} eligible unreserved unit(s){quality} (best {eligibleTotal}); mixing is limited.";
             return new ReserveResult(outcome, null, eligibleTotal, detail);
         }
 
         var lines = plan.Allocations
-            .GroupBy(a => a.Product)
+            .GroupBy(a => new StockLot(a.Product, a.Quality))
             .OrderBy(g => g.Key)
-            .Select(g => new ReservationLine(g.Key, g.Sum(a => a.Quantity)))
+            .Select(g => new ReservationLine(g.Key.Product, g.Sum(a => a.Quantity), g.Key.Quality))
             .ToList();
         var reservation = new Reservation(order.ContractId, stock.DealerId, ++_sequence, lines);
         reservation.TryMove(ReservationState.Reserved);
         _byContract.Add(order.ContractId, reservation);
+        _minimums[order.ContractId] = order.MinimumQuality;
         Hold(reservation, +1);
         Version++;
         return new ReserveResult(ReserveOutcome.Reserved, reservation, eligibleTotal, string.Join(", ", lines));
@@ -324,20 +359,20 @@ public sealed class ReservationLedger
     public IReadOnlyList<string> Reconcile(DealerStock stock)
     {
         var invalidated = new List<string>();
-        if (stock is null || !_held.TryGetValue(stock.DealerId, out var byProduct))
+        if (stock is null || !_held.TryGetValue(stock.DealerId, out var byLot))
         {
             return invalidated;
         }
 
-        foreach (var product in byProduct.Keys.OrderBy(p => p).ToList())
+        foreach (var lot in byLot.Keys.OrderBy(l => l).ToList())
         {
             var newestFirst = _byContract.Values
-                .Where(r => r.DealerId == stock.DealerId && r.State == ReservationState.Reserved && r.Lines.Any(l => l.Product == product))
+                .Where(r => r.DealerId == stock.DealerId && r.State == ReservationState.Reserved && r.Lines.Any(l => l.Lot.Equals(lot)))
                 .OrderByDescending(r => r.Sequence)
                 .ToList();
             foreach (var reservation in newestFirst)
             {
-                if (HeldUnits(stock.DealerId, product) <= stock.UnitsOf(product))
+                if (HeldUnits(stock.DealerId, lot) <= stock.UnitsOf(lot))
                 {
                     break;
                 }
@@ -368,6 +403,7 @@ public sealed class ReservationLedger
         {
             _byContract.Clear();
             _held.Clear();
+            _minimums.Clear();
             Version++;
         }
     }
@@ -379,7 +415,7 @@ public sealed class ReservationLedger
     public IReadOnlyList<string> CheckInvariants(Func<string, DealerStock?>? stockOf = null)
     {
         var problems = new List<string>();
-        var expected = new Dictionary<(string, ProductKey), long>();
+        var expected = new Dictionary<(string, StockLot), long>();
         foreach (var reservation in _byContract.Values)
         {
             if (!reservation.IsHolding)
@@ -394,7 +430,7 @@ public sealed class ReservationLedger
                     problems.Add($"{reservation.ContractId}: non-positive line {line}.");
                 }
 
-                var key = (reservation.DealerId, line.Product);
+                var key = (reservation.DealerId, line.Lot);
                 expected[key] = (expected.TryGetValue(key, out var u) ? u : 0) + line.Units;
             }
         }
@@ -419,12 +455,18 @@ public sealed class ReservationLedger
                 {
                     problems.Add($"{dealer.Key}/{held.Key}: {held.Value} held but only {stock.UnitsOf(held.Key)} in stock.");
                 }
+
+                if (held.Key.Quality is null && _byContract.Values.Any(r => r.DealerId == dealer.Key && r.Lines.Any(l => l.Lot.Equals(held.Key)) &&
+                        TryOrderMinimum(r) is not null))
+                {
+                    problems.Add($"{dealer.Key}/{held.Key}: unknown-quality units held for an order with a quality minimum.");
+                }
             }
         }
 
         foreach (var key in expected.Keys)
         {
-            if (!_held.TryGetValue(key.Item1, out var byProduct) || !byProduct.ContainsKey(key.Item2))
+            if (!_held.TryGetValue(key.Item1, out var byLotHeld) || !byLotHeld.ContainsKey(key.Item2))
             {
                 problems.Add($"{key.Item1}/{key.Item2}: reserved but not held.");
             }
@@ -446,25 +488,36 @@ public sealed class ReservationLedger
         return reservation;
     }
 
+    /// <summary>The quality minimum a reservation was made for (recorded so invariants can be checked).</summary>
+    private QualityTier? TryOrderMinimum(Reservation reservation)
+        => _minimums.TryGetValue(reservation.ContractId, out var minimum) ? minimum : null;
+
+    private readonly Dictionary<string, QualityTier?> _minimums = new(StringComparer.Ordinal);
+
     private void Hold(Reservation reservation, int sign)
     {
         if (!_held.TryGetValue(reservation.DealerId, out var byProduct))
         {
-            byProduct = new Dictionary<ProductKey, long>();
+            byProduct = new Dictionary<StockLot, long>();
             _held.Add(reservation.DealerId, byProduct);
         }
 
         foreach (var line in reservation.Lines)
         {
-            var next = (byProduct.TryGetValue(line.Product, out var u) ? u : 0) + sign * (long)line.Units;
+            var next = (byProduct.TryGetValue(line.Lot, out var u) ? u : 0) + sign * (long)line.Units;
             if (next == 0)
             {
-                byProduct.Remove(line.Product);
+                byProduct.Remove(line.Lot);
             }
             else
             {
-                byProduct[line.Product] = next;
+                byProduct[line.Lot] = next;
             }
+        }
+
+        if (sign < 0)
+        {
+            _minimums.Remove(reservation.ContractId);
         }
 
         if (byProduct.Count == 0)

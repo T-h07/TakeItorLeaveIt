@@ -136,7 +136,10 @@ public sealed class PlayerSaleCoordinator
             return null;
         }
 
-        var validation = DeliveryValidator.Validate(transaction.Order, items, _catalog());
+        var catalog = _catalog();
+        var order = transaction.Order;
+        var validation = DeliveryValidator.Validate(order, items, catalog,
+            product => RuleExplainer.ExplainNotAllowed(order, _policies.Current, catalog, product));
         _book.RecordValidation(validation);
         return validation;
     }

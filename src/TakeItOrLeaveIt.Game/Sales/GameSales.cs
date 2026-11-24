@@ -4,6 +4,7 @@ using Il2CppScheduleOne.ItemFramework;
 using Il2CppScheduleOne.Product;
 using Il2CppScheduleOne.Quests;
 using TakeItOrLeaveIt.Core.Diagnostics;
+using TakeItOrLeaveIt.Core.Products;
 using TakeItOrLeaveIt.Core.Sales;
 
 namespace TakeItOrLeaveIt.Game.Sales;
@@ -101,7 +102,8 @@ internal static class GameSales
             }
         }
 
-        return new OrderRequest(ContractId(contract), isPlayerContract, lines);
+        // The customer's own quality standard (vanilla); Core only uses it as a floor for dealer stock (Phase 05).
+        return new OrderRequest(ContractId(contract), isPlayerContract, lines, QualityTiers.FromGame((int)RequiredQuality(contract)));
     }
 
     /// <summary>Validates handover items (cached while they do not change).</summary>
@@ -239,7 +241,20 @@ internal static class GameSales
             return new DeliveredItem(slot, item.ID, item.Quantity, 1, true);
         }
 
-        return new DeliveredItem(slot, product.ID, product.Quantity, product.Amount, product.AppliedPackaging != null);
+        return new DeliveredItem(slot, product.ID, product.Quantity, product.Amount, product.AppliedPackaging != null, QualityOf(product));
+    }
+
+    /// <summary>The stack's quality tier (QualityItemInstance.Quality), or null when it is not a known tier.</summary>
+    internal static QualityTier? QualityOf(ProductItemInstance product)
+    {
+        try
+        {
+            return QualityTiers.FromGame((int)product.Quality);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     private static EQuality RequiredQuality(Contract contract)

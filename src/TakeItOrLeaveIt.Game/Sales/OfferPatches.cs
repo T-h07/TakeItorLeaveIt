@@ -4,6 +4,7 @@ using System.Reflection;
 using HarmonyLib;
 using Il2CppScheduleOne.Economy;
 using Il2CppScheduleOne.Product;
+using TakeItOrLeaveIt.Core.Policies;
 using TakeItOrLeaveIt.Core.Sales;
 using TakeItOrLeaveIt.Game.Patching;
 using CandidateList = Il2CppSystem.Collections.Generic.List<Il2CppSystem.Tuple<Il2CppScheduleOne.Product.ProductDefinition, int>>;
@@ -44,7 +45,10 @@ internal sealed class OfferPatches : IPatchModule
 
     public static void MarkRemoved() => Applied = false;
 
-    private static void CandidatesPostfix(CandidateList __result)
+    /// <param name="__0">The game's <c>dealer</c> argument: null when the customer orders from the player, else the
+    /// dealer whose rules and switch apply (Phase 05; meaning PROBABLE, see PHASE_05_TESTING.md).</param>
+    /// <param name="__result">The game's candidate list, filtered in place.</param>
+    private static void CandidatesPostfix(Dealer? __0, CandidateList __result)
     {
         var filter = Filter;
         if (filter is null || __result is null)
@@ -54,7 +58,8 @@ internal sealed class OfferPatches : IPatchModule
 
         try
         {
-            var removed = filter.Filter(__result.Count, i => __result[i]?.Item1?.ID, i => __result.RemoveAt(i));
+            var scope = __0 is null ? SalesScope.Player : SalesScope.Dealer(GameDealers.DealerId(__0));
+            var removed = filter.Filter(__result.Count, i => __result[i]?.Item1?.ID, i => __result.RemoveAt(i), scope);
             if (removed > 0)
             {
                 GameSales.Once($"offer-filter:{filter.CandidatesRemoved / 50}",
