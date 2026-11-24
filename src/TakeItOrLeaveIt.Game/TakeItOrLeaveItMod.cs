@@ -231,6 +231,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
         Sales.SalesSession.Catalog = () => _discovery.Catalog.State.Snapshot;
         Sales.GameDealers.Coordinator = _sales.Dealers;
         Sales.GameDealers.Notifier = _sales.Notifier;
+        _menu.Dealers = Sales.GameDealers.SeenDealers;
         Sales.OfferPatches.Filter = _sales.Offers;
         _sales.Coordinator.Prices = Sales.GamePrices.Source;
         _sales.Dealers.Prices = Sales.GamePrices.Source;

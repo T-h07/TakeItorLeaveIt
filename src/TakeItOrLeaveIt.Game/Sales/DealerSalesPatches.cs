@@ -215,6 +215,7 @@ internal sealed class DealerSalesPatches : IPatchModule
         {
             if (__instance is not null)
             {
+                GameDealers.Observe(__instance);
                 GameDealers.MaybeReconcile(__instance);
                 GameDealers.MaybeNotify(__instance);
             }

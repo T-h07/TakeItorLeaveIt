@@ -45,7 +45,9 @@ internal static class Advanced
     public static ProductDescriptor Mix(ProductKey key, ProductKey[] parents, params string[] effects)
         => new(key, Weed, key.Value, UnlockState.Unlocked, effects, parents: parents, ancestryKnown: true);
 
-    public static ProductCatalogSnapshot Snapshot() => Catalog.Snapshot(
+    public static ProductCatalogSnapshot Snapshot() => Catalog.Snapshot(Discovery());
+
+    public static DiscoveryResult Discovery() => Catalog.Result(
         Base(OgKush, Calming),
         Base(SourDiesel, Energizing),
         Base(Gdp),
