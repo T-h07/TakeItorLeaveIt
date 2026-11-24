@@ -55,8 +55,9 @@ internal static class GameDealers
     }
 
     /// <summary>
-    /// The dealer's packaged product stock in units (stack size x package amount), one entry per slot. Unpackaged
-    /// or unreadable items are left out, so the snapshot can only under-count what the game could remove.
+    /// The dealer's packaged product stock in units (stack size x package amount), one entry per slot with its quality
+    /// tier (Phase 05). Unpackaged or unreadable items are left out, so the snapshot can only under-count what the game
+    /// could remove.
     /// </summary>
     public static DealerStock? Stock(Dealer dealer)
     {
@@ -80,7 +81,7 @@ internal static class GameDealers
                 }
 
                 var units = (long)product.Quantity * product.Amount;
-                stacks.Add(new InventoryStack("slot:" + i.ToString(CultureInfo.InvariantCulture), key, (int)Math.Min(units, int.MaxValue)));
+                stacks.Add(new InventoryStack("slot:" + i.ToString(CultureInfo.InvariantCulture), key, (int)Math.Min(units, int.MaxValue), GameSales.QualityOf(product)));
             }
         }
 

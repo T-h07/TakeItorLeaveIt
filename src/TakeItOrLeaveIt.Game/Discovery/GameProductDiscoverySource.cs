@@ -13,8 +13,13 @@ namespace TakeItOrLeaveIt.Game.Discovery;
 /// <c>ProductDefinition.Properties</c> (list of Effect with <c>.ID</c>).</para>
 /// <para>Every product in DiscoveredProducts is reported as <see cref="UnlockState.Unlocked"/>. Products the
 /// save has not discovered are simply absent, so they can never become eligible (fail closed). Categories
-/// are the drug types that actually occur; no category is invented. Base products of mixes are not
-/// inferred.</para>
+/// are the drug types that actually occur; no category is invented.</para>
+/// <para>Phase 05 ancestry (VERIFIED members, see PHASE_05_ANALYSIS.md section 1): the instance field
+/// <c>ProductManager.mixRecipes</c> (list of StationRecipe). Each recipe gives the edges <i>input product → output
+/// product</i>: <c>StationRecipe.Product.Item.ID</c> is the output and every ingredient item that is a product
+/// definition (has a <c>DrugType</c>) is a parent; mixer ingredients are not products and are ignored. Names are
+/// never used. When the list cannot be read every product is reported with unknown ancestry; a recipe that cannot
+/// be read in full makes only its output's ancestry unknown.</para>
 /// </summary>
 internal sealed class GameProductDiscoverySource : IProductDiscoverySource
 {
@@ -87,6 +92,7 @@ internal sealed class GameProductDiscoverySource : IProductDiscoverySource
         var categories = new Dictionary<CategoryKey, CategoryDescriptor>();
         var products = new List<ProductDescriptor>(items.Count);
         var issues = new List<string>();
+        var ancestry = ReadAncestry(issues);
 
         for (var index = 0; index < items.Count; index++)
         {
@@ -116,28 +122,141 @@ internal sealed class GameProductDiscoverySource : IProductDiscoverySource
             }
 
             GameReflection.TryGet(definition, "Name", out var nameObj);
-            products.Add(new ProductDescriptor(key, category, nameObj as string, UnlockState.Unlocked, ReadEffectIds(definition)));
+            var effects = ReadEffectIds(definition, out var effectsKnown);
+            IEnumerable<ProductKey>? parents = null;
+            var ancestryKnown = ancestry is not null && !ancestry.Unreadable.Contains(key);
+            if (ancestry is not null && ancestry.Parents.TryGetValue(key, out var found))
+            {
+                parents = found;
+            }
+
+            products.Add(new ProductDescriptor(key, category, nameObj as string, UnlockState.Unlocked, effects,
+                parents: parents, ancestryKnown: ancestryKnown, effectsKnown: effectsKnown));
         }
 
         return DiscoveryResult.Success(new List<CategoryDescriptor>(categories.Values), products, issues);
     }
 
-    private static IEnumerable<string> ReadEffectIds(object definition)
+    private static IEnumerable<string> ReadEffectIds(object definition, out bool known)
     {
         var ids = new List<string>();
-        if (!GameReflection.TryGet(definition, "Properties", out var effects))
+        known = false;
+        if (!GameReflection.TryGet(definition, "Properties", out var effects) || GameReflection.ToList(effects) is not { } list)
         {
             return ids;
         }
 
-        foreach (var effect in GameReflection.ToList(effects) ?? Array.Empty<object?>())
+        known = true;
+        foreach (var effect in list)
         {
             if (GameReflection.TryGet(effect, "ID", out var id) && id is string s && !string.IsNullOrWhiteSpace(s))
             {
                 ids.Add(s.Trim());
             }
+            else
+            {
+                known = false; // an unreadable effect could be an excluded one: the product never passes an effect rule
+            }
         }
 
         return ids;
+    }
+
+    private sealed class Ancestry
+    {
+        public Dictionary<ProductKey, List<ProductKey>> Parents { get; } = new();
+
+        public HashSet<ProductKey> Unreadable { get; } = new();
+    }
+
+    /// <summary>Reads the recorded mix recipes, or null (with an issue) when they cannot be read at all.</summary>
+    private static Ancestry? ReadAncestry(List<string> issues)
+    {
+        var managerType = GameReflection.FindGameType(ProductManagerType);
+        if (managerType is null || !GameReflection.TryGetStatic(managerType, "Instance", out var manager) || manager is null)
+        {
+            issues.Add("Mix recipes: ProductManager instance not available; ancestry unknown for every product (base-strain rules match only the selected product itself).");
+            return null;
+        }
+
+        if (!GameReflection.TryGet(manager, "mixRecipes", out var raw) || GameReflection.ToList(raw) is not { } recipes)
+        {
+            issues.Add("Mix recipes: ProductManager.mixRecipes not readable; ancestry unknown for every product.");
+            return null;
+        }
+
+        var result = new Ancestry();
+        var skipped = 0;
+        for (var index = 0; index < recipes.Count; index++)
+        {
+            var recipe = recipes[index];
+            if (!GameReflection.TryGet(recipe, "Product", out var output) ||
+                !GameReflection.TryGet(output, "Item", out var outputItem) ||
+                !GameReflection.TryGet(outputItem, "ID", out var outputId) ||
+                !ProductKey.TryCreate(outputId as string, out var child))
+            {
+                skipped++;
+                continue;
+            }
+
+            if (!GameReflection.TryGet(recipe, "Ingredients", out var rawIngredients) || GameReflection.ToList(rawIngredients) is not { } ingredients)
+            {
+                result.Unreadable.Add(child);
+                skipped++;
+                continue;
+            }
+
+            var parents = new List<ProductKey>();
+            var complete = true;
+            foreach (var ingredient in ingredients)
+            {
+                if (!GameReflection.TryGet(ingredient, "Item", out var item) || item is null)
+                {
+                    complete = false;
+                    continue;
+                }
+
+                if (!GameReflection.TryGet(item, "DrugType", out _))
+                {
+                    continue; // a mixer (not a product definition)
+                }
+
+                if (GameReflection.TryGet(item, "ID", out var parentId) && ProductKey.TryCreate(parentId as string, out var parent))
+                {
+                    parents.Add(parent);
+                }
+                else
+                {
+                    complete = false;
+                }
+            }
+
+            if (!complete)
+            {
+                result.Unreadable.Add(child);
+                skipped++;
+            }
+
+            if (!result.Parents.TryGetValue(child, out var list))
+            {
+                list = new List<ProductKey>();
+                result.Parents.Add(child, list);
+            }
+
+            foreach (var parent in parents)
+            {
+                if (parent != child && !list.Contains(parent))
+                {
+                    list.Add(parent);
+                }
+            }
+        }
+
+        if (skipped > 0)
+        {
+            issues.Add($"Mix recipes: {skipped} of {recipes.Count} recipe(s) could not be read in full; affected products have unknown ancestry.");
+        }
+
+        return result;
     }
 }
