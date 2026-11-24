@@ -77,7 +77,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
                 }
 
                 _log.Info(ModInfo.InitializedMessage);
-                _log.Info($"Phase 04: player sales {(_sales?.Status.HooksActive == true ? "hooks active" : "unavailable in this build")}; " +
+                _log.Info($"Phase 05: player sales {(_sales?.Status.HooksActive == true ? "hooks active" : "unavailable in this build")}; " +
                           $"dealer sales {(_sales?.DealerStatus.HooksActive == true ? "hooks active" : "unavailable in this build")}.");
                 break;
             case StartupOutcome.UnsupportedEnvironment:

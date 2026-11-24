@@ -133,7 +133,11 @@ is then removed and the game runs vanilla). `Disabled` means the mod is off for 
   (`ShouldAcceptContract`, not patched). Offers only name permitted products now (offer filter).
 - A short appointment still makes the dealer go to the customer; the handover is withheld and the game's own
   failed-deal handling applies (PROBABLE until ST01 runs).
-- Quality is the game's: the removal is asked for the customer's target quality, as vanilla does.
+- Quality (Phase 05): stock is tracked per quality lot; an appointment only reserves units at or above the
+  stricter of your minimum and the customer's requirement, and the removal is asked for at least the reserved
+  lot's tier. Which slots the game's removal takes first among qualifying items is PROBABLE.
+- Dealer sales can be switched off separately and dealers can have their own rules (Phase 05,
+  [ADVANCED_RULES.md](ADVANCED_RULES.md)).
 - That `requiredQuantity` is in units, and that the handover routine calls `Customer.ProcessHandover`, are
   PROBABLE (call graph); the log line `removed N unit(s)` and scenarios DS01-DS03 in [PHASE_04_TESTING.md](PHASE_04_TESTING.md) confirm them.
 - Dealer restock texts: [PHASE_04_ENHANCEMENTS.md §4](PHASE_04_ENHANCEMENTS.md#4-dealer-restock-messages).

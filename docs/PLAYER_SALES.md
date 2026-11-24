@@ -172,4 +172,6 @@ report says **Unavailable** with the reason, and the game runs vanilla.
   PROBABLE (call graph), confirmed only by the in-game tests.
 - `HandoverScreenContractMode.GetError` returning `true` for "there is an error" is PROBABLE; if it were the
   opposite, the match hook alone still blocks invalid deliveries (they score 0).
-- Single player only; dealers: see [DEALER_SALES.md](DEALER_SALES.md); no quality/effect rules yet (Phase 05).
+- Single player only; dealers: see [DEALER_SALES.md](DEALER_SALES.md). Quality, effect, lineage and mixing rules
+  (Phase 05): [ADVANCED_RULES.md](ADVANCED_RULES.md); handover items below the quality minimum are refused before
+  transfer, and the customer's own quality judgement is unchanged.

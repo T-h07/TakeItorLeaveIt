@@ -256,6 +256,24 @@ Behaviour and limitations: [DEALER_SALES.md](DEALER_SALES.md). Hook evidence: [P
 
 Enhancements: [PHASE_04_ENHANCEMENTS.md](PHASE_04_ENHANCEMENTS.md).
 
+## 6d. Advanced rules (Phase 05)
+
+Player guide: [ADVANCED_RULES.md](ADVANCED_RULES.md). Evidence and precedence: [PHASE_05_ANALYSIS.md](PHASE_05_ANALYSIS.md).
+The Phase 01 engine is extended, not replaced: every path still asks `SaleEligibilityPolicy`, now with the policy
+resolved for its scope (`PolicyConfiguration.ForScope`).
+
+| Component | Location | Responsibility |
+| --- | --- | --- |
+| `ProductDescriptor.Parents/AncestryKnown/EffectsKnown`, `ProductCatalogSnapshot` ancestry | Core `Products/`, `Discovery/` | Recorded lineage (transitive, multi-parent, cycle-safe), base strains, category effects |
+| `CategoryPolicy`, `EffectRule`, `PolicyMode.Blocklist`, `SelectionMatch` | Core `Policies/` | Allowed/blocked lists, exact or base-strain matching, effect rules with conflicts, quality minimum |
+| `PolicyConfiguration` (schema 2), `SalesScope`, `MixingMode` | Core `Policies/` | Switches, mixing, dealer overrides, migration (fail closed on unreadable values) |
+| `QualityTier`, `SaleEligibilityPolicy.CheckQuality` | Core | Quality floor for physical stacks only |
+| `StockLot`, lot-based `DealerStock` / `ReservationLedger` | Core `Dealers/` | Holds per product and quality tier; base-strain groups; invariants per lot |
+| `CategoryOrder.Mixing/MinimumQuality/GroupsOf` | Core `Sales/` | Snapshot of mixing, lineage groups and quality at acceptance |
+| `RuleExplainer` | Core `Sales/` | Specific handover messages; display only |
+| `PolicyPresets` | Core `Policies/` | Apply, detect, preview presets |
+| Rules / Sales / Presets screens | Game `PhoneMenu/` | Rendering only; every decision comes from Core |
+
 ## 7. Configuration and persistence strategy (Phase 02 / 06)
 
 - Implemented in Phase 02: **mod-owned JSON**, never inside vanilla save files, one file per save at

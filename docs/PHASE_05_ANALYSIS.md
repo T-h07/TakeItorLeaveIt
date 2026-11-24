@@ -102,7 +102,8 @@ is reported as contradictory and permits nothing, so no impossible order is crea
 | First save over a schema 1 file | The old file is copied once to `<save id>.json.schema1.bak`, then schema 2 is written |
 | Schema 1 `selectedOnly` ids | Never reinterpreted as base strains (`match` defaults to `exact`) |
 | Unknown future schema (> 2) | Every category Disabled, nothing editable is lost from the file (it is not overwritten until you save) |
-| Unknown `match`, `mixing`, quality or effect mode | The restrictive choice: exact match, single product, unknown quality → the rule permits nothing for that category (reported) |
+| Unknown `match`, quality or unreadable effect id | That category is Disabled (reported): exact matching would block less on a blocklist, and a dropped effect would loosen the rule |
+| Unknown `mixing` / effect `match` | Single product / *all* (the stricter reading, reported) |
 | Missing `playerSales` / `dealerSales` | On |
 | Dealer override for an id that is not a valid token | Dropped (reported) |
 

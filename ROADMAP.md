@@ -188,6 +188,15 @@ short); hired dealers send restock texts through the game's phone conversation, 
 
 **We call this done when:** Switching presets and combining filters always produces the expected result, and the menu explains *why* an item is accepted or rejected.
 
+**Implementation status (Phase 05):** done, in-game acceptance not yet tested. Lineage comes only from the game's
+recorded mix recipes (`ProductManager.mixRecipes`), transitive and multi-parent; unknown lineage fails closed.
+Allowed/blocked lists by exact recipe or base strain, minimum quality on physical items (dealer stock is tracked
+per quality lot), required/excluded effects with conflict detection, four mixing modes (fair pricing kept),
+player/dealer switches, per-dealer overrides (dealer → global → default), presets with preview and a *Custom*
+label, schema 2 settings with a one-time backup. No new game hook. Details:
+[ADVANCED_RULES.md](docs/ADVANCED_RULES.md), [PHASE_05_ANALYSIS.md](docs/PHASE_05_ANALYSIS.md); tests:
+[PHASE_05_TESTING.md](docs/PHASE_05_TESTING.md).
+
 ### Phase 06 — Settings, Save Files & Stability
 
 **Branch:** `feature/phase-06-persistence`
