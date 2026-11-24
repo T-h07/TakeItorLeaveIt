@@ -167,4 +167,14 @@ No refactor without a defect: the changes above are fixes. `PolicyStore` parses 
 
 ## 5. Commits
 
-See PHASE_08_RELEASE_BLOCKERS.md (B-17 … B-21) and the git log of `feature/phase-08-release` after `7f5afbe`.
+| Commit | Findings |
+| --- | --- |
+| `b3169e0` build: map source paths so shipped DLLs carry no build-machine path | A-07 |
+| `681d122` ci: pin GitHub Actions to commit SHAs | R-09 |
+| `ef24d9d` fix(logging): redact absolute paths and bound untrusted text in logs | A-08, A-09 |
+| `b737605` fix(persistence): cap document size and never widen a damaged order flag | A-10, A-11 |
+| `35b13e5` fix(sales): fail closed for held contracts and keep items a rollback could not return | A-01 … A-06, A-12, A-13 |
+| `29c165e` test: synthetic performance suite W and PERFORMANCE.md | H09 |
+| `0c3228b` build: version 1.0.0-rc.2 | RC source commit |
+
+Blocker entries: B-16 … B-21 in [PHASE_08_RELEASE_BLOCKERS.md](PHASE_08_RELEASE_BLOCKERS.md).
