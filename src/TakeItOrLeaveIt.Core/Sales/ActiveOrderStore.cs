@@ -12,7 +12,12 @@ public enum OrdersLoadStatus
 {
     NotFound,
     Loaded,
+
+    /// <summary>Damaged, or written for another save. The bytes are kept (corrupt copy) before the file is next replaced.</summary>
     Unreadable,
+
+    /// <summary>Phase 06: written by a newer build; read as empty and never overwritten in this session.</summary>
+    NewerSchema,
 }
 
 public sealed class OrdersLoadResult
@@ -33,7 +38,9 @@ public sealed class OrdersLoadResult
 
 /// <summary>
 /// Persists the active order snapshots of one save to <c>&lt;root&gt;/saves/&lt;save identity&gt;.orders.json</c>,
-/// next to the policy file. Atomic write (temp file, then replace). Invalid entries are dropped with an issue,
+/// next to the policy file. Writes go through <see cref="SafeDocumentFile"/> (temporary file, read-back check, one
+/// rename, known-good <c>.bak</c>, corrupt copies kept, newer schemas never replaced). Documents carry the save
+/// identity (Phase 06); a document written for another save is not loaded. Invalid entries are dropped with an issue,
 /// never guessed: a dropped order simply falls back to vanilla rules.
 /// </summary>
 public sealed class ActiveOrderStore
@@ -42,15 +49,17 @@ public sealed class ActiveOrderStore
 
     private readonly string _directory;
     private readonly string _suffix;
+    private readonly int _schema;
     private readonly ISettingsFileSystem _fs;
+    private readonly Func<DateTime> _utcNow;
 
-    public ActiveOrderStore(string rootDirectory, ISettingsFileSystem? fileSystem = null)
-        : this(rootDirectory, fileSystem, ".orders.json")
+    public ActiveOrderStore(string rootDirectory, ISettingsFileSystem? fileSystem = null, Func<DateTime>? utcNow = null)
+        : this(rootDirectory, fileSystem, ".orders.json", SchemaVersion, utcNow)
     {
     }
 
-    /// <summary>Same storage rules under another file name (the dealer appointment file uses it).</summary>
-    internal ActiveOrderStore(string rootDirectory, ISettingsFileSystem? fileSystem, string fileSuffix)
+    /// <summary>Same storage rules under another file name (the dealer appointment and alert files use it).</summary>
+    internal ActiveOrderStore(string rootDirectory, ISettingsFileSystem? fileSystem, string fileSuffix, int supportedSchema, Func<DateTime>? utcNow = null)
     {
         if (string.IsNullOrWhiteSpace(rootDirectory))
         {
@@ -59,19 +68,72 @@ public sealed class ActiveOrderStore
 
         _directory = Path.Combine(rootDirectory, "saves");
         _suffix = fileSuffix;
+        _schema = supportedSchema;
         _fs = fileSystem ?? PhysicalSettingsFileSystem.Instance;
+        _utcNow = utcNow ?? (() => DateTime.UtcNow);
     }
 
-    public string PathFor(string saveIdentity)
+    public string PathFor(string saveIdentity) => Path.Combine(_directory, SaveFileNames.Check(saveIdentity) + _suffix);
+
+    /// <summary>Classifies the file on disk (I/O errors propagate).</summary>
+    internal DocumentCheck Inspect(string saveIdentity)
+        => SafeDocumentFile.Inspect(_fs, PathFor(saveIdentity), text => Classify(text, _schema, saveIdentity));
+
+    /// <summary>The known-good backup's text when it classifies as valid for this save, else null.</summary>
+    internal string? ReadVerifiedBackup(string saveIdentity)
     {
-        if (string.IsNullOrWhiteSpace(saveIdentity) || saveIdentity.Length > 64 ||
-            saveIdentity.Any(c => !(char.IsLetterOrDigit(c) || c == '-' || c == '_')))
+        var backup = PathFor(saveIdentity) + SafeDocumentFile.BackupSuffix;
+        if (!_fs.FileExists(backup))
         {
-            throw new ArgumentException("Save identity must be a short file-safe token.", nameof(saveIdentity));
+            return null;
         }
 
-        return Path.Combine(_directory, saveIdentity + _suffix);
+        var text = _fs.ReadAllText(backup);
+        return Classify(text, _schema, saveIdentity).State == DocumentState.Valid && DeclaredSave(text) == saveIdentity ? text : null;
     }
+
+    /// <summary>
+    /// Classifies a versioned runtime document: not an object / bad schema number → unreadable; newer schema →
+    /// <see cref="DocumentState.NewerSchema"/>; a <c>save</c> field naming another save → unreadable.
+    /// </summary>
+    internal static DocumentCheck Classify(string json, int supportedSchema, string? saveIdentity)
+    {
+        Dictionary<string, object?>? root;
+        try
+        {
+            root = MiniJson.Parse(json) as Dictionary<string, object?>;
+        }
+        catch (FormatException ex)
+        {
+            return DocumentCheck.Unreadable(ex.Message);
+        }
+
+        if (root is null)
+        {
+            return DocumentCheck.Unreadable("the root is not a JSON object");
+        }
+
+        if (!root.TryGetValue("schemaVersion", out var v) || v is not double version || version != Math.Floor(version) || version < 1)
+        {
+            return DocumentCheck.Unreadable("schemaVersion must be a positive integer");
+        }
+
+        if (version > supportedSchema)
+        {
+            return DocumentCheck.Newer($"schema {version}, supported {supportedSchema}");
+        }
+
+        if (root.TryGetValue("save", out var save) && save is not null &&
+            (save is not string text || (saveIdentity is not null && !string.Equals(text, saveIdentity, StringComparison.Ordinal))))
+        {
+            return DocumentCheck.Unreadable("the file was written for a different save");
+        }
+
+        return DocumentCheck.Valid;
+    }
+
+    private static string? DeclaredSave(string json)
+        => MiniJson.Parse(json) is Dictionary<string, object?> root && root.TryGetValue("save", out var save) ? save as string : null;
 
     /// <summary>The raw document, or null when there is none. Throws on I/O errors.</summary>
     internal string? ReadText(string saveIdentity)
@@ -91,8 +153,18 @@ public sealed class ActiveOrderStore
                 return new OrdersLoadResult(OrdersLoadStatus.NotFound, none, Array.Empty<string>());
             }
 
+            var text = _fs.ReadAllText(path);
+            var check = Classify(text, SchemaVersion, saveIdentity);
+            if (check.State != DocumentState.Valid)
+            {
+                return new OrdersLoadResult(check.State == DocumentState.NewerSchema ? OrdersLoadStatus.NewerSchema : OrdersLoadStatus.Unreadable, none,
+                    new[] { check.State == DocumentState.NewerSchema
+                        ? $"Order file was written by a newer version ({check.Detail}); it is kept unchanged and active orders use vanilla rules."
+                        : $"Order file not used ({check.Detail}); the file is kept and active orders use vanilla rules." });
+            }
+
             var issues = new List<string>();
-            var orders = FromJson(_fs.ReadAllText(path), issues);
+            var orders = FromJson(text, issues);
             return new OrdersLoadResult(OrdersLoadStatus.Loaded, orders, issues);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FormatException or InvalidDataException)
@@ -102,35 +174,22 @@ public sealed class ActiveOrderStore
     }
 
     public void Save(string saveIdentity, IEnumerable<SaleTransaction> transactions)
-        => SaveText(saveIdentity, ToJson(transactions ?? Array.Empty<SaleTransaction>()));
+        => SaveText(saveIdentity, ToJson(transactions ?? Array.Empty<SaleTransaction>(), saveIdentity));
 
-    /// <summary>Writes an already serialised document (lets the caller serialise on the main thread and write elsewhere).</summary>
-    public void SaveText(string saveIdentity, string json)
+    /// <summary>
+    /// Writes an already serialised document (lets the caller serialise on the main thread and write elsewhere) through
+    /// <see cref="SafeDocumentFile.Write"/>. Throws on failure, and <see cref="NewerSchemaException"/> instead of replacing
+    /// a newer file.
+    /// </summary>
+    public DocumentWriteOutcome SaveText(string saveIdentity, string json)
     {
         var path = PathFor(saveIdentity);
-        var temp = path + ".tmp";
         _fs.CreateDirectory(_directory);
-        try
-        {
-            _fs.WriteAllText(temp, json ?? throw new ArgumentNullException(nameof(json)));
-            _fs.ReplaceFile(temp, path);
-        }
-        catch
-        {
-            try
-            {
-                _fs.DeleteFile(temp);
-            }
-            catch (Exception)
-            {
-                // best effort
-            }
-
-            throw;
-        }
+        return SafeDocumentFile.Write(_fs, path, json ?? throw new ArgumentNullException(nameof(json)),
+            text => Classify(text, _schema, saveIdentity), _utcNow);
     }
 
-    public static string ToJson(IEnumerable<SaleTransaction> transactions)
+    public static string ToJson(IEnumerable<SaleTransaction> transactions, string? saveIdentity = null)
     {
         var orders = transactions
             .Where(t => !t.IsTerminal)
@@ -144,11 +203,23 @@ public sealed class ActiveOrderStore
             })
             .ToList();
 
-        return MiniJson.Write(new Dictionary<string, object?>(StringComparer.Ordinal)
+        return MiniJson.Write(Document(SchemaVersion, saveIdentity, "orders", orders));
+    }
+
+    /// <summary>The root object shared by the runtime files: schema, optional save identity, entry list.</summary>
+    internal static Dictionary<string, object?> Document(int schema, string? saveIdentity, string listName, object? entries)
+    {
+        var root = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
-            ["schemaVersion"] = SchemaVersion,
-            ["orders"] = orders,
-        });
+            ["schemaVersion"] = schema,
+            [listName] = entries,
+        };
+        if (saveIdentity is not null)
+        {
+            root["save"] = SaveFileNames.Check(saveIdentity);
+        }
+
+        return root;
     }
 
     /// <summary>Throws <see cref="FormatException"/> / <see cref="InvalidDataException"/> when the text is not an order document.</summary>

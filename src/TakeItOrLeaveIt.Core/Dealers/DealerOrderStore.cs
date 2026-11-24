@@ -36,9 +36,9 @@ public sealed class DealerOrderStore
 
     private readonly ActiveOrderStore _files;
 
-    public DealerOrderStore(string rootDirectory, ISettingsFileSystem? fileSystem = null)
+    public DealerOrderStore(string rootDirectory, ISettingsFileSystem? fileSystem = null, Func<DateTime>? utcNow = null)
     {
-        _files = new ActiveOrderStore(rootDirectory, fileSystem, ".dealer-orders.json");
+        _files = new ActiveOrderStore(rootDirectory, fileSystem, ".dealer-orders.json", SchemaVersion, utcNow);
     }
 
     public string PathFor(string saveIdentity) => _files.PathFor(saveIdentity);
@@ -54,6 +54,15 @@ public sealed class DealerOrderStore
                 return new DealerOrdersLoadResult(OrdersLoadStatus.NotFound, none, Array.Empty<string>());
             }
 
+            var check = ActiveOrderStore.Classify(text, SchemaVersion, saveIdentity);
+            if (check.State != DocumentState.Valid)
+            {
+                return new DealerOrdersLoadResult(check.State == DocumentState.NewerSchema ? OrdersLoadStatus.NewerSchema : OrdersLoadStatus.Unreadable, none,
+                    new[] { check.State == DocumentState.NewerSchema
+                        ? $"Dealer order file was written by a newer version ({check.Detail}); it is kept unchanged and appointments use vanilla rules."
+                        : $"Dealer order file not used ({check.Detail}); the file is kept and appointments use vanilla rules." });
+            }
+
             var issues = new List<string>();
             var records = FromJson(text, issues);
             return new DealerOrdersLoadResult(OrdersLoadStatus.Loaded, records, issues);
@@ -65,11 +74,11 @@ public sealed class DealerOrderStore
     }
 
     public void Save(string saveIdentity, IEnumerable<DealerOrderRecord> records)
-        => SaveText(saveIdentity, ToJson(records ?? Array.Empty<DealerOrderRecord>()));
+        => SaveText(saveIdentity, ToJson(records ?? Array.Empty<DealerOrderRecord>(), saveIdentity));
 
-    public void SaveText(string saveIdentity, string json) => _files.SaveText(saveIdentity, json);
+    public DocumentWriteOutcome SaveText(string saveIdentity, string json) => _files.SaveText(saveIdentity, json);
 
-    public static string ToJson(IEnumerable<DealerOrderRecord> records)
+    public static string ToJson(IEnumerable<DealerOrderRecord> records, string? saveIdentity = null)
     {
         var appointments = records
             .OrderBy(r => r.Sequence)
@@ -84,11 +93,7 @@ public sealed class DealerOrderStore
             })
             .ToList();
 
-        return MiniJson.Write(new Dictionary<string, object?>(StringComparer.Ordinal)
-        {
-            ["schemaVersion"] = SchemaVersion,
-            ["appointments"] = appointments,
-        });
+        return MiniJson.Write(ActiveOrderStore.Document(SchemaVersion, saveIdentity, "appointments", appointments));
     }
 
     /// <summary>Throws <see cref="FormatException"/> / <see cref="InvalidDataException"/> when the text is not a dealer order document.</summary>

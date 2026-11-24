@@ -152,8 +152,8 @@ public sealed class DealerAlertState
         return stale.Count;
     }
 
-    public string ToJson()
-        => MiniJson.Write(new Dictionary<string, object?>(StringComparer.Ordinal)
+    public string ToJson(string? saveIdentity = null)
+        => MiniJson.Write(WithSave(saveIdentity, new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["schemaVersion"] = DealerAlertStore.SchemaVersion,
             ["categories"] = Categories.Select(e => (object?)new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -170,7 +170,17 @@ public sealed class DealerAlertState
                 ["category"] = e.Category.Value,
                 ["shortfall"] = e.Shortfall,
             }).ToList(),
-        });
+        }));
+
+    private static Dictionary<string, object?> WithSave(string? saveIdentity, Dictionary<string, object?> root)
+    {
+        if (saveIdentity is not null)
+        {
+            root["save"] = SaveFileNames.Check(saveIdentity);
+        }
+
+        return root;
+    }
 
     /// <summary>Reads a document; invalid entries are dropped with an issue. Throws when the text is not an alert document.</summary>
     public static DealerAlertState FromJson(string json, ICollection<string> issues)
@@ -238,7 +248,9 @@ public sealed class DealerAlertState
 
 /// <summary>
 /// Stores <see cref="DealerAlertState"/> in <c>&lt;root&gt;/saves/&lt;save identity&gt;.dealer-alerts.json</c> with the same
-/// atomic write rules as the order files. A missing or unreadable file only means "no alert history".
+/// write rules as the order files (<see cref="SafeDocumentFile"/>). A missing file means "no alert history". An
+/// unreadable one is kept and, when its known-good backup verifies for this save, the backup's history is used
+/// instead (a slightly older history can at worst repeat one message; none at all could repeat every one).
 /// </summary>
 public sealed class DealerAlertStore
 {
@@ -246,27 +258,69 @@ public sealed class DealerAlertStore
 
     private readonly ActiveOrderStore _files;
 
-    public DealerAlertStore(string rootDirectory, ISettingsFileSystem? fileSystem = null)
+    public DealerAlertStore(string rootDirectory, ISettingsFileSystem? fileSystem = null, Func<DateTime>? utcNow = null)
     {
-        _files = new ActiveOrderStore(rootDirectory, fileSystem, ".dealer-alerts.json");
+        _files = new ActiveOrderStore(rootDirectory, fileSystem, ".dealer-alerts.json", SchemaVersion, utcNow);
     }
 
     public string PathFor(string saveIdentity) => _files.PathFor(saveIdentity);
 
     /// <summary>The stored state, or a fresh one (with an issue when the file was unreadable).</summary>
-    public DealerAlertState Load(string saveIdentity, ICollection<string> issues)
+    public DealerAlertState Load(string saveIdentity, ICollection<string> issues) => Load(saveIdentity, issues, out _);
+
+    public DealerAlertState Load(string saveIdentity, ICollection<string> issues, out OrdersLoadStatus status)
     {
+        status = OrdersLoadStatus.NotFound;
+        string damage;
         try
         {
             var text = _files.ReadText(saveIdentity);
-            return text is null ? new DealerAlertState() : DealerAlertState.FromJson(text, issues);
+            if (text is null)
+            {
+                return new DealerAlertState();
+            }
+
+            var check = ActiveOrderStore.Classify(text, SchemaVersion, saveIdentity);
+            if (check.State == DocumentState.NewerSchema)
+            {
+                status = OrdersLoadStatus.NewerSchema;
+                issues.Add($"Dealer alert file was written by a newer version ({check.Detail}); it is kept unchanged and no history is used.");
+                return new DealerAlertState();
+            }
+
+            if (check.State == DocumentState.Valid)
+            {
+                status = OrdersLoadStatus.Loaded;
+                return DealerAlertState.FromJson(text, issues);
+            }
+
+            status = OrdersLoadStatus.Unreadable;
+            damage = $"Dealer alert file is damaged ({check.Detail}); it is kept (a copy is made before it is next written)";
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FormatException or InvalidDataException)
         {
+            status = OrdersLoadStatus.Unreadable;
             issues.Add($"Dealer alert file could not be read ({ex.GetType().Name}); starting with no alert history.");
             return new DealerAlertState();
         }
+
+        try
+        {
+            var backup = _files.ReadVerifiedBackup(saveIdentity);
+            if (backup is not null)
+            {
+                issues.Add(damage + "; the history was recovered from its verified backup.");
+                return DealerAlertState.FromJson(backup, issues);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FormatException or InvalidDataException)
+        {
+            damage += $"; its backup could not be read ({ex.GetType().Name})";
+        }
+
+        issues.Add(damage + "; starting with no alert history.");
+        return new DealerAlertState();
     }
 
-    public void SaveText(string saveIdentity, string json) => _files.SaveText(saveIdentity, json);
+    public DocumentWriteOutcome SaveText(string saveIdentity, string json) => _files.SaveText(saveIdentity, json);
 }

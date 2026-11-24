@@ -288,7 +288,11 @@ resolved for its scope (`PolicyConfiguration.ForScope`).
 - Phase 04 enhancements add optional `pricing`, `quotedValue` and `unitPrices{}` to each order/appointment entry
   (schema stays 1; entries without them load through the legacy path) and `<save-id>.dealer-alerts.json`, the
   restock-message dedup state (`{schemaVersion, categories:[...], shortages:[...]}`).
-- Deferred to Phase 06: migrations beyond schema 1, global (non-save) settings, export/import, backups/rotation.
+- Phase 06 (see [PHASE_06_ANALYSIS.md](PHASE_06_ANALYSIS.md)): every file carries an optional `save` field and is
+  written through `SafeDocumentFile` (temporary file, read-back, rename, `<file>.bak`, at most three
+  `<file>.corrupt-<UTC>` copies, newer schemas never replaced). Runtime files go through `SalesPersistence` and an
+  ordered `PersistenceQueue` (one pending document per save and file, one background writer, bounded flushes).
+  Still not done: global (non-save) settings, export/import.
 - Selections reference stable product IDs. Unknown or locked IDs are treated as inactive and never unlocked.
 - MelonPreferences is not used: dynamic per-save product lists need our own file.
 

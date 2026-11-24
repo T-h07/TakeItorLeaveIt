@@ -216,6 +216,14 @@ label, schema 2 settings with a one-time backup. No new game hook. Details:
 
 **We call this done when:** Both saves retain the right settings, no vanilla files are damaged, and config upgrades or unexpected shutdowns are recoverable.
 
+**Implementation status (Phase 06):** done and covered by automated tests (612), **not verified in game** (physical
+acceptance is deferred to Phase 08). One safe write path for all four per-save files (temporary file, read-back
+check, one rename, known-good `.bak`, bounded `.corrupt-<time>` copies, newer schemas never replaced); an ordered,
+coalescing write queue that fixes a cross-save lost-write bug; retries and bounded flushes on save switch and quit;
+documents tagged with their save; wrongly typed settings fields fail closed; a verified backup is offered (never
+applied silently) when settings are damaged; game-side dealer caches reset per save session. Details:
+[PHASE_06_ANALYSIS.md](docs/PHASE_06_ANALYSIS.md); Phase 08 scenarios: [PHASE_06_TESTING.md](docs/PHASE_06_TESTING.md).
+
 ### Phase 07 — Multiplayer & Game Version Compatibility
 
 **Branch:** `feature/phase-07-multiplayer`

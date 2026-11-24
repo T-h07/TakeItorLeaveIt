@@ -77,7 +77,8 @@ public class SettingsMigrationTests
 
         Assert.Equal(Schema1, fs.Files[path + ".schema1.bak"]);
         Assert.Contains("\"schemaVersion\":2", fs.Files[path].Replace(" ", string.Empty));
-        Assert.Single(fs.Files.Keys, k => k.EndsWith(".bak", System.StringComparison.Ordinal));
+        Assert.Single(fs.Files.Keys, k => k.EndsWith(".schema1.bak", System.StringComparison.Ordinal));
+        Assert.Contains("\"schemaVersion\":2", fs.Files[path + ".bak"].Replace(" ", string.Empty)); // Phase 06 known-good copy
     }
 
     [Fact]

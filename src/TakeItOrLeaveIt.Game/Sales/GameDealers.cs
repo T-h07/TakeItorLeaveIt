@@ -199,6 +199,11 @@ internal static class GameDealers
     /// <summary>Dealers seen in this save, for the menu.</summary>
     public static IReadOnlyList<DealerInfo> SeenDealers() => new List<DealerInfo>(Seen.Values);
 
+    /// <summary>
+    /// Forgets every per-session cache. Called on each save session change (Phase 06): the id cache is keyed by native
+    /// object pointers, which may be reused by another dealer after a reload, and the seen list must not show the
+    /// previous save's dealers.
+    /// </summary>
     public static void Reset()
     {
         Seen.Clear();

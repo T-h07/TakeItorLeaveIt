@@ -376,6 +376,13 @@ public sealed class PolicyConfiguration
                 found.Add(new ConfigurationIssue(ConfigurationIssueKind.UnknownMode, category.Value, entry.Mode, "Unknown mode; category treated as Disabled." + where));
             }
 
+            if (entry.Damaged is { Count: > 0 } damaged)
+            {
+                mode = PolicyMode.Disabled;
+                found.Add(new ConfigurationIssue(ConfigurationIssueKind.DamagedField, category.Value, string.Join(", ", damaged),
+                    $"Field(s) {string.Join(", ", damaged)} have the wrong type; category treated as Disabled." + where));
+            }
+
             var match = SelectionMatch.ExactProduct;
             if (entry.Match is not null && !TryParseMatch(entry.Match, out match))
             {
@@ -421,11 +428,21 @@ public sealed class PolicyConfiguration
                 }
             }
 
+            var blockedIssues = found.Count;
+            var blocked = CleanProducts(entry.BlockedProducts, category, found, where);
+            if (found.Skip(blockedIssues).Any(i => i.Kind == ConfigurationIssueKind.InvalidProductKey))
+            {
+                // Dropping a blocked product would permit it: fail closed (an invalid allowed entry only narrows).
+                mode = PolicyMode.Disabled;
+                found.Add(new ConfigurationIssue(ConfigurationIssueKind.InvalidProductKey, category.Value, null,
+                    "Blocked list could not be read in full; category treated as Disabled." + where));
+            }
+
             categories.Add(category, new CategoryPolicy(
                 mode,
                 CleanProducts(entry.SelectedProducts, category, found, where),
                 match,
-                CleanProducts(entry.BlockedProducts, category, found, where),
+                blocked,
                 effects,
                 minimum));
         }
@@ -637,6 +654,15 @@ public sealed class PolicySettings
 
     /// <summary>Phase 05 dealer overrides, keyed by the dealer's NPC id.</summary>
     public Dictionary<string, DealerPolicySettings>? Dealers { get; set; }
+
+    /// <summary>
+    /// Phase 06: the save identity the file was written for (optional; files of older builds have none). A file whose
+    /// identity differs from the save it is loaded for is treated as unreadable.
+    /// </summary>
+    public string? Save { get; set; }
+
+    /// <summary>Phase 06: JSON paths of fields this build does not know (reported; not kept when the file is next written).</summary>
+    public List<string> UnknownFields { get; } = new();
 }
 
 public sealed class CategoryPolicySettings
@@ -654,6 +680,12 @@ public sealed class CategoryPolicySettings
 
     /// <summary>Phase 05: null (any) or a quality id such as "standard".</summary>
     public string? MinQuality { get; set; }
+
+    /// <summary>
+    /// Phase 06: fields that were present in the file with the wrong JSON type (for example a number in a product
+    /// list). A damaged category is made Disabled rather than read with part of its rule missing.
+    /// </summary>
+    public List<string>? Damaged { get; set; }
 }
 
 public sealed class EffectRuleSettings
@@ -685,6 +717,9 @@ public enum ConfigurationIssueKind
     UnknownEffectMatch,
     InvalidEffect,
     InvalidDealerId,
+
+    /// <summary>Phase 06: a field had the wrong JSON type; the category is Disabled.</summary>
+    DamagedField,
 }
 
 /// <summary>A problem found while validating settings, and what was done about it.</summary>
