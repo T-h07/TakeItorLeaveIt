@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using TakeItOrLeaveIt.Core.Persistence;
 using TakeItOrLeaveIt.Core.Sales;
+using TakeItOrLeaveIt.Core.Diagnostics;
 
 namespace TakeItOrLeaveIt.Core.Dealers;
 
@@ -69,7 +70,7 @@ public sealed class DealerOrderStore
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FormatException or InvalidDataException)
         {
-            return new DealerOrdersLoadResult(OrdersLoadStatus.Unreadable, none, new[] { $"Dealer order file could not be read ({ex.GetType().Name}: {ex.Message})." });
+            return new DealerOrdersLoadResult(OrdersLoadStatus.Unreadable, none, new[] { $"Dealer order file could not be read ({LogText.Describe(ex)})." });
         }
     }
 

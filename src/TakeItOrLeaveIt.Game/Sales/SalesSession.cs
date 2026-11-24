@@ -6,6 +6,7 @@ using Il2CppScheduleOne.PlayerScripts;
 using Il2CppScheduleOne.Quests;
 using TakeItOrLeaveIt.Core.Discovery;
 using TakeItOrLeaveIt.Core.Sales;
+using TakeItOrLeaveIt.Core.Diagnostics;
 
 namespace TakeItOrLeaveIt.Game.Sales;
 
@@ -48,7 +49,7 @@ internal static class SalesSession
         catch (Exception ex)
         {
             host.FailClosed();
-            GameSales.Once("session-error", $"Session check failed; Take It manages nothing until the next successful check. {ex.GetType().Name}: {ex.Message}", warning: true);
+            GameSales.Once("session-error", $"Session check failed; Take It manages nothing until the next successful check. {LogText.Describe(ex)}", warning: true);
         }
     }
 

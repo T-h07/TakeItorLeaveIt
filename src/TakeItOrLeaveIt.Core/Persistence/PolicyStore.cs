@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using TakeItOrLeaveIt.Core.Policies;
+using TakeItOrLeaveIt.Core.Diagnostics;
 
 namespace TakeItOrLeaveIt.Core.Persistence;
 
@@ -171,7 +172,7 @@ public sealed class JsonPolicyStore : IPolicyStore
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // The file may be fine (locked by another program): no recovery is offered, nothing is replaced.
-            return new PolicyLoadResult(PolicyLoadStatus.Unreadable, null, $"Settings file could not be opened ({ex.GetType().Name}: {ex.Message}).");
+            return new PolicyLoadResult(PolicyLoadStatus.Unreadable, null, $"Settings file could not be opened ({LogText.Describe(ex)}).");
         }
 
         var check = PolicySettingsJson.Classify(text, saveIdentity);
@@ -469,7 +470,7 @@ public static class PolicySettingsJson
         }
         catch (Exception ex) when (ex is FormatException or InvalidDataException)
         {
-            return DocumentCheck.Unreadable(ex.Message);
+            return DocumentCheck.Unreadable(LogText.Clip(ex.Message, 200));
         }
 
         if (settings.SchemaVersion > PolicyConfiguration.CurrentSchemaVersion)

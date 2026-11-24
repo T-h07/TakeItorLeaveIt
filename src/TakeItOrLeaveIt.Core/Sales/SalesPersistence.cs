@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using TakeItOrLeaveIt.Core.Dealers;
 using TakeItOrLeaveIt.Core.Persistence;
+using TakeItOrLeaveIt.Core.Diagnostics;
 
 namespace TakeItOrLeaveIt.Core.Sales;
 
@@ -99,7 +100,7 @@ public sealed class SalesPersistence
         catch (Exception ex)
         {
             status[SalesFile.Orders] = OrdersLoadStatus.Unreadable;
-            load.Issues.Add($"Active orders could not be loaded ({ex.GetType().Name}: {ex.Message}); they use vanilla rules.");
+            load.Issues.Add($"Active orders could not be loaded ({LogText.Describe(ex)}); they use vanilla rules.");
         }
 
         try
@@ -112,7 +113,7 @@ public sealed class SalesPersistence
         catch (Exception ex)
         {
             status[SalesFile.Appointments] = OrdersLoadStatus.Unreadable;
-            load.Issues.Add($"Dealer appointments could not be loaded ({ex.GetType().Name}: {ex.Message}); they use vanilla rules.");
+            load.Issues.Add($"Dealer appointments could not be loaded ({LogText.Describe(ex)}); they use vanilla rules.");
         }
 
         try
@@ -125,7 +126,7 @@ public sealed class SalesPersistence
         catch (Exception ex)
         {
             status[SalesFile.Alerts] = OrdersLoadStatus.Unreadable;
-            load.Issues.Add($"Dealer message history could not be loaded ({ex.GetType().Name}: {ex.Message}).");
+            load.Issues.Add($"Dealer message history could not be loaded ({LogText.Describe(ex)}).");
         }
 
         foreach (var pair in status)

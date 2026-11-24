@@ -602,7 +602,7 @@ public sealed class ModMenuController : IDisposable
         catch (Exception ex)
         {
             _log?.Error("Saving menu settings failed.", ex);
-            SetFeedback(FeedbackKind.Error, $"Settings were NOT saved: {ex.Message}");
+            SetFeedback(FeedbackKind.Error, $"Settings were NOT saved: {LogText.Describe(ex)}");
             return false;
         }
 
@@ -882,7 +882,7 @@ public sealed class ModMenuController : IDisposable
         catch (Exception ex)
         {
             _log?.Error("Loading menu settings failed.", ex);
-            return new PolicyLoadResult(PolicyLoadStatus.Unreadable, null, ex.Message);
+            return new PolicyLoadResult(PolicyLoadStatus.Unreadable, null, LogText.Describe(ex));
         }
     }
 

@@ -113,7 +113,7 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
         }
         catch (Exception ex)
         {
-            MelonLoader.MelonLogger.Error($"[TakeItOrLeaveIt] Phone app UI could not be built: {ex}");
+            MelonLoader.MelonLogger.Error($"[TakeItOrLeaveIt] {TakeItOrLeaveIt.Core.Diagnostics.LogText.Entry("Phone app UI could not be built:", ex)}");
             UiKit.Clear(container.transform);
             var fallback = UiKit.Panel("Error", container.transform, Theme.Background);
             UiKit.Stretch(fallback);
@@ -361,7 +361,7 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
         }
         catch (Exception ex)
         {
-            MelonLoader.MelonLogger.Warning($"[TakeItOrLeaveIt] Layout check failed: {ex.Message}");
+            MelonLoader.MelonLogger.Warning($"[TakeItOrLeaveIt] Layout check failed: {TakeItOrLeaveIt.Core.Diagnostics.LogText.Describe(ex)}");
         }
     }
 
@@ -1065,7 +1065,7 @@ internal static class AppIcon
         }
         catch (Exception ex)
         {
-            MelonLoader.MelonLogger.Warning($"[TakeItOrLeaveIt] App icon could not be drawn: {ex.Message}");
+            MelonLoader.MelonLogger.Warning($"[TakeItOrLeaveIt] App icon could not be drawn: {TakeItOrLeaveIt.Core.Diagnostics.LogText.Describe(ex)}");
             return null;
         }
     }
