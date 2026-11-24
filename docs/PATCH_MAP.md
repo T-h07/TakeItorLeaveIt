@@ -13,6 +13,11 @@
 > **Phase 04 update:** the dealer rows (DLR-*, dealer flow in §8) were checked the same way. Verified signatures,
 > call edges and the two dealer hooks (D1 `Dealer.RemoveContractItems` prefix, D2 `Dealer.OnTick` postfix) are in
 > **[PHASE_04_PATCH_ANALYSIS.md](PHASE_04_PATCH_ANALYSIS.md)**, which supersedes this file for those rows.
+>
+> **Phase 04 enhancements:** offer hook O1 (`Customer.GetOrderableProductsWithQuantities(Dealer)` postfix, row
+> CUS-12), price reads (`Registry.GetItem` → `ProductDefinition.Price`) and dealer texts
+> (`NPC.MSGConversation` → `MSGConversation.SendMessage`) are verified in
+> [PHASE_04_PATCH_ANALYSIS.md §8-§11](PHASE_04_PATCH_ANALYSIS.md#8-enhancements-overview).
 
 ## 1. How to read this map
 
@@ -61,6 +66,7 @@ acceptance, payment...), which is how the **UNVERIFIED** rows get filled in.
 | CUS-09 | Assembly-CSharp | `Quests.Contract` / `UI.Handover.HandoverScreenContractMode` | **Handover acceptance**: `Contract.GetProductListMatch(List<ItemInstance>, ref int)` (+ `List<ProductItemInstance>` overload), gate `HandoverScreenContractMode.GetError(ref string)` | Core of Phase 03 | See PHASE_03_PATCH_ANALYSIS §2 | installed-build xref | **Patched in Phase 03** (prefix on both overloads, postfix on GetError) for mod-managed contracts only | High | IL2CPP | **verified** (existence, call edges) | 03 |
 | CUS-10 | Assembly-CSharp | `Economy.Customer` | **Satisfaction**: `EvaluateDelivery(Contract, List<ItemInstance>, ref float, ref EDrugType, ref int, ref float)`, which calls CUS-09 | Recipe penalty enters through the match | See PHASE_03_PATCH_ANALYSIS §2 | installed-build xref | Not patched: receives the CUS-09 result (quality kept, recipe dropped) | High | IL2CPP | **verified** (edge); formula PROBABLE | 03 |
 | CUS-11 | — | `ScheduleOne.NPCs.Relation.NPCRelationData` | Relationship change method(s): only `Unlock(EUnlockType)` seen | Relationship progression | UNVERIFIED for deltas | E1 (`Unlock` only) | Do not patch; must stay vanilla | Medium | Both* | unresolved | 03 |
+| CUS-12 | Assembly-CSharp | `Customer` | `List<Tuple<ProductDefinition,int>> GetOrderableProductsWithQuantities(Dealer)` | Candidate pool for every customer offer (player and dealer) | Callers: `GetWeightedRandomProduct`, `GetOrderableProducts`, `ShouldTryApproachPlayer`; new list per call | installed-build xref | **O1 postfix** removes candidates the live policy excludes; choice and pricing stay vanilla | Medium | IL2CPP | **verified** (signature, edges); empty-pool effect probable | 04 |
 
 ## 3. Orders / contracts (`ScheduleOne.Quests`, `ScheduleOne.Product`)
 

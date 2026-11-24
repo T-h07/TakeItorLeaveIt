@@ -83,14 +83,14 @@ UnityEngine.IMGUIModule, UnityEngine.InputLegacyModule. **Never commit these fil
 
 ## Phase 03/04 player and dealer sales hooks (local references)
 
-The Harmony hooks on the customer-contract and dealer code (`src/TakeItOrLeaveIt.Game/Sales/`) are compiled only for the
+The Harmony hooks on the customer-contract, customer-offer and dealer code (`src/TakeItOrLeaveIt.Game/Sales/`) are compiled only for the
 IL2CPP build and only when `S1RefsDir` contains `MelonLoader\Il2CppAssemblies\Assembly-CSharp.dll`
 (define `GAME_PATCHES`). The export from step 1 above already contains everything. Additional compile-time
 references (`Private=false`, never packaged): Assembly-CSharp, Il2CppScheduleOne.Core, Il2CppFishNet.Runtime,
 Unity.TextMeshPro.
 
 Without them (CI, Mono) the mod still builds and all tests run; the log and the status report then say
-`Player Sales: Unavailable` and `Dealer sales: Unavailable` with the reason, and sales stay vanilla. The package contents do not change: still
+`Player Sales: Unavailable`, `Dealer sales: Unavailable` and `Customer offer filter: Unavailable` with the reason, and sales and offers stay vanilla. The package contents do not change: still
 only `TakeItOrLeaveIt.Il2Cpp.dll` / `TakeItOrLeaveIt.Mono.dll` and `TakeItOrLeaveIt.Core.dll`.
 
 To check the hooks against a new game version, rerun the export on the gaming PC and rebuild: a renamed or

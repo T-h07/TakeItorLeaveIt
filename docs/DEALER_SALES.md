@@ -52,7 +52,7 @@ units are never promised twice, the mod keeps a **reservation ledger**:
           ▼                         ▼
       Reserved ◀──── stock arrives ── WaitingForEligibleStock
           │  ╲                          ▲
-          │   ╲── stock lost ───────────┘   (after 5 losses: back to vanilla)
+          │   ╲── stock lost ───────────┘   (stays managed; strict mode)
           ▼
       Committing ── the game's removal ran ──▶ CommitObserved ──▶ Completed
           │
@@ -60,8 +60,11 @@ units are never promised twice, the mod keeps a **reservation ledger**:
 ```
 
 If reserved stock disappears (you take it back, it was sold elsewhere), the newest reservations that no longer
-fit are **invalidated** and replan. An appointment that keeps losing its stock (more than 5 times) is handed
-back to the game's own rules.
+fit are **invalidated** and replan. An appointment that keeps losing its stock stays managed (strict mode); after
+5 losses it is reported once in diagnostics.
+
+Only **fair** products are reserved: a substitute must be worth at least the quoted unit price
+([PHASE_04_ENHANCEMENTS.md §2](PHASE_04_ENHANCEMENTS.md#2-fair-pricing-fixed-quote-rule)).
 
 ## 3. The handover
 
@@ -69,11 +72,15 @@ The game's dealer walks to the customer and runs its handover routine. At the mo
 requested product from the dealer's inventory (`Dealer.RemoveContractItems`), the mod:
 
 1. reads the dealer's current inventory and reconciles the reservations with it;
-2. makes sure this appointment holds a reservation (if it cannot, the appointment returns to vanilla **before
-   anything is removed** and the game's own removal runs);
+2. makes sure this appointment holds a reservation. If it cannot, **nothing is removed and nothing is handed
+   over**: the game's exact-product removal does not run, the appointment keeps waiting and the dealer texts you
+   (strict mode, [PHASE_04_ENHANCEMENTS.md §3](PHASE_04_ENHANCEMENTS.md#3-strict-dealer-fulfilment));
 3. calls the game's own `Dealer.RemoveAndReturnProductFromInventory(product, units, quality)` once per
    reserved product, so packaging splits, slot updates and networking are the game's;
-4. releases the reservation (the stock has left the inventory) and logs the planned and removed units.
+4. releases the reservation (the stock has left the inventory) and logs the planned and removed units. If the
+   removal returned a different amount, every removed item goes back to the dealer and nothing is handed over.
+
+If the game moves the contract to another dealer, the appointment follows that dealer.
 
 A second handover call for the same appointment removes nothing. The customer then judges the items with
 the Phase 03 rules (any permitted product, quality still counts, no recipe-mismatch penalty), and the game
@@ -86,7 +93,9 @@ the items back to the dealer as usual.
 - Inventory is only removed by the game's removal method, with exactly the reserved units.
 - Settlement is observed once (`Customer.ProcessHandover`); repeats are logged and ignored.
 - Contracts that are not managed (mod off, dealer contracts accepted before installing, multiplayer) run the
-  game's code unchanged.
+  game's code unchanged, except that while the mod is on and ready a dealer never hands over a product the
+  settings exclude.
+- Substitutes are never cheaper than the quote, so the game's fixed payment always matches the delivered value.
 
 ## 5. Save, reload and save switching
 
@@ -111,6 +120,9 @@ Stock reservations: 1 (5 unit(s))
 Last dealer error: none
 ```
 
+Followed by the offer filter, fair pricing, strict fulfilment and restock message lines
+([PHASE_04_ENHANCEMENTS.md §6](PHASE_04_ENHANCEMENTS.md#6-diagnostics)).
+
 `Unavailable` means a hook is missing (CI or Mono build, or a game update changed a method: every mod patch
 is then removed and the game runs vanilla). `Disabled` means the mod is off for this save.
 
@@ -118,9 +130,12 @@ is then removed and the game runs vanilla). `Disabled` means the mod is off for 
 
 - Single player only (Phase 07 for co-op).
 - Acceptance stays vanilla: a dealer accepts a contract with the game's own stock check
-  (`ShouldAcceptContract`, not patched), and the customer's offer still names one product.
+  (`ShouldAcceptContract`, not patched). Offers only name permitted products now (offer filter).
+- A short appointment still makes the dealer go to the customer; the handover is withheld and the game's own
+  failed-deal handling applies (PROBABLE until ST01 runs).
 - Quality is the game's: the removal is asked for the customer's target quality, as vanilla does.
 - That `requiredQuantity` is in units, and that the handover routine calls `Customer.ProcessHandover`, are
   PROBABLE (call graph); the log line `removed N unit(s)` and scenarios DS01-DS03 in [PHASE_04_TESTING.md](PHASE_04_TESTING.md) confirm them.
+- Dealer restock texts: [PHASE_04_ENHANCEMENTS.md §4](PHASE_04_ENHANCEMENTS.md#4-dealer-restock-messages).
 - If the game is saved in the few seconds between the removal and the customer's evaluation, the appointment
   is restored as waiting.

@@ -22,6 +22,12 @@
    ```text
    [TakeItOrLeaveIt] Patch module applied: Player sales (category orders)
    [TakeItOrLeaveIt] Harmony patches active: 10 method(s) across 1 module(s).
+   ```
+
+   With the Phase 04 build the log shows `13 method(s) across 3 module(s)` (player sales, dealer sales,
+   customer offers); see [PHASE_04_TESTING.md](PHASE_04_TESTING.md).
+
+   ```text
    [TakeItOrLeaveIt] Player Sales: ...
    [TakeItOrLeaveIt] Offer hook: Active
    [TakeItOrLeaveIt] Handover validation: Active

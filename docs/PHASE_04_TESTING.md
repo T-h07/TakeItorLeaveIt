@@ -1,6 +1,8 @@
 # Phase 04 testing: hired dealer sales
 
-> **Status: IMPLEMENTATION COMPLETE — PHYSICAL ACCEPTANCE NOT TESTED.** Nothing in §4–§5 has been run in game.
+> **Status: IMPLEMENTATION COMPLETE (incl. critical enhancements) — PHYSICAL ACCEPTANCE NOT TESTED.** Nothing in
+> §4–§5 or §8 has been run in game. The enhancements (offers, fair pricing, strict dealers, restock messages) are
+> described in [PHASE_04_ENHANCEMENTS.md](PHASE_04_ENHANCEMENTS.md).
 > Only mark PASS what you observed; use FAIL, BLOCKED (could not set it up) or NOT TESTED otherwise.
 
 ## 1. Before you start
@@ -22,13 +24,18 @@
    ```text
    [TakeItOrLeaveIt] Patch module applied: Player sales (category orders)
    [TakeItOrLeaveIt] Patch module applied: Dealer sales (category appointments)
-   [TakeItOrLeaveIt] Harmony patches active: 12 method(s) across 2 module(s).
+   [TakeItOrLeaveIt] Patch module applied: Customer offers (policy filter)
+   [TakeItOrLeaveIt] Harmony patches active: 13 method(s) across 3 module(s).
    [TakeItOrLeaveIt] Dealer sales: ...
    [TakeItOrLeaveIt] Dealer appointment hook: Active
    [TakeItOrLeaveIt] Dealer fulfilment hook: Active
    [TakeItOrLeaveIt] Dealer stock reconcile: Active
    [TakeItOrLeaveIt] Dealer sales authority: Single player host.
    [TakeItOrLeaveIt] Dealer sales: Active.
+   [TakeItOrLeaveIt] Customer offer filter: Active
+   [TakeItOrLeaveIt] Fair pricing: Active (substitutes must be worth at least the quoted unit price)
+   [TakeItOrLeaveIt] Strict dealer fulfilment: On (managed appointments never fall back to the requested product)
+   [TakeItOrLeaveIt] Dealer restock messages: Active
    ```
 
    `Patch module '...' failed` means the game runs vanilla: stop and send the log.
@@ -45,7 +52,7 @@ product in the dealer's inventory.
 Give the dealer product, wait for one of their customers to order, and look for:
 
 ```text
-Dealer appointment created: <guid>: 5 x marijuana (any of 3 product(s), mixed on, policy r..) for dealer <npc id>: Reserved (...)
+Dealer appointment created: <guid>: 5 x marijuana (any of 3 product(s), mixed on, policy r.., quote ..) for dealer <npc id>: Reserved (...)
 Dealer contract <guid> uses vanilla rules: <reason> (...)
 ```
 
@@ -63,9 +70,9 @@ Dealer order <guid> ended (Completed, 5 unit(s) removed, 1 handover(s) observed)
 | --- | --- | --- | --- |
 | DS01 | Dealer holds only a permitted Weed that is **not** the ordered one, enough units | Let the dealer complete the deal | Delivered with the substitute; exactly N units leave the dealer; one payment, cut and XP |
 | DS02 | Dealer holds two permitted Weeds, neither enough alone, together ≥ N; Mixed ON | Complete | Both used; total removed = N |
-| DS03 | Same as DS02, Mixed **OFF** before acceptance | Complete | Appointment waits (log/diagnostics), then returns to vanilla at handover: vanilla outcome |
+| DS03 | Same as DS02, Mixed **OFF** before acceptance | Let the deal time come | Appointment waits; at the handover **nothing** is handed over (`nothing handed over`), no payment; the dealer texts a shortage |
 | DS04 | Dealer holds N of the ordered product and lots of Meth | Complete | Only Weed removed; Meth untouched |
-| DS05 | Selected Only with one Weed ticked; dealer holds a lot of an unticked Weed | Complete | Unticked Weed never delivered; vanilla outcome if the ticked one is short |
+| DS05 | Selected Only with one Weed ticked; dealer holds a lot of an unticked Weed | Complete | Unticked Weed never delivered; if the ticked one is short nothing is handed over |
 | DS06 | Dealer holds less than N eligible units | Accept, check diagnostics | `Waiting for eligible stock: 1` |
 | DS07 | After DS06, give the dealer enough permitted Weed | Wait a few seconds | Log `reserved`; diagnostics shows 1 reservation |
 | DS08 | Two appointments for the same dealer, stock for only one | Accept both | One Reserved, one Waiting; never both reserved |
@@ -108,8 +115,8 @@ amounts, XP once, and the dealer's inventory lost exactly the units in the `remo
 
 ## 6. Automated tests (development PC)
 
-`dotnet test TakeItOrLeaveIt.sln -c Release`: **390 tests pass** (337 from Phases 00–03 plus 53 Phase 04
-cases). Suites A–C and E run against Core directly; suite D and the stress test run against
+`dotnet test TakeItOrLeaveIt.sln -c Release`: **458 tests pass** (337 from Phases 00–03, 53 Phase 04 cases and
+68 enhancement cases in suites O, P, M and S; see the second table). Suites A–C and E run against Core directly; suite D and the stress test run against
 `DealerHarness`, a **simulated** vanilla dealer (inventory slots, exact-id removal, customer judgement, one
 payment with a 20 % cut). They prove the model, not the game.
 
@@ -142,11 +149,11 @@ payment with a 20 % cut). They prove the model, not the game.
 | P04-T25 | C | Waiting appointments served in acceptance order, bounded per reconcile |
 | P04-T26 | C | Dealer delivers a permitted substitute |
 | P04-T27 | C | Mixed delivery removes exactly the plan |
-| P04-T28 | C | No eligible stock returns to vanilla before removal |
+| P04-T28 | C | Short stock withholds the handover and keeps waiting (strict) |
 | P04-T29 | C | Second handover removes nothing |
 | P04-T30 | C | Lost stock replans to another product |
-| P04-T31 | C | Repeated stock loss returns to vanilla |
-| P04-T32 | C | Contract moved to another dealer returns to vanilla |
+| P04-T31 | C | Repeated stock loss keeps the appointment managed (strict) |
+| P04-T32 | C | Contract moved to another dealer follows the new dealer (strict) |
 | P04-T33 | C | Expire/cancel/fail release the stock |
 | P04-T34 | C | Reconcile is skipped until something changes |
 | P04-T35 | D settlement | One dealer sale settles exactly once (payment, cut, XP, units) |
@@ -164,6 +171,15 @@ payment with a 20 % cut). They prove the model, not the game.
 | P04-T47 | E stress | 3000 random interleavings across 3 dealers keep every invariant (**simulated**) |
 | P04-T48 | E perf | 50 dealers × 20 appointments, 5 reconcile rounds (**simulated** benchmark) |
 
+Enhancement suites (all pass; S and the harness-based P cases run on the **simulated** dealer/settlement):
+
+| Suite | File | Cases | Covers |
+| --- | --- | --- | --- |
+| O, customer offers | `CustomerOfferTests.cs` | O01–O15 | Any Unlocked, Selected Only, Disabled, empty selection, global off, settings/catalog not ready, client/multiplayer, locked, unknown and blank candidates, order kept, counters, live policy, offer/quote/snapshot consistency, status |
+| P, fair pricing | `FairPricingTests.cs` | P01–P17 | Sour Diesel quote refuses OG Kush, pricier/equal substitutes, inclusive boundary, multi-line average, missing/unpriced prices, no price source, `NoFairProduct`, every mixed basket ≥ quote, downgrade of unprovable snapshots, persistence, legacy snapshots, damaged price data, player settlement pays the game's quote once, dealer never reserves a cheaper product, float cleaning |
+| M, restock messages | `DealerMessagingTests.cs` | M01–M22 | Never-stocked categories, settle period, exact texts, once only, re-arm after restock, failed send retry/back-off/give-up, permitted units only, Disabled category, other categories, shortage numbers, other appointments' holds, Mixed off best product, grow-only resend, episodes, shortage replaces out-of-stock, per-dealer identity, reload dedup, save switch, mod off/not host, throttle, damaged history |
+| S, strict fulfilment | `StrictFulfilmentTests.cs` | S01–S13 (S05 runs twice) | No excluded fallback, no partial delivery, short removal rolled back, removal that cannot start, deadline/fail cleanup, unmanaged excluded contract withheld, unmanaged permitted vanilla, global off vanilla, multiplayer vanilla, repeated withholds never pay, rehome to an empty dealer, normal path unchanged, **randomised 3000-step stress (seed 9001, simulated)**: all-or-nothing deliveries, snapshot products only, basket ≥ quote, at most one payment, ledger invariants after every step |
+
 All P04-T01..T48 pass. Development-PC figures (Release): the stress run settled 113 of 421 contracts with
 every ledger invariant checked after each of 3000 steps; the benchmark ran 250 dealer reconciles over 1000
 appointments in about 22 ms. In game, a reconcile runs at most every 3 seconds per dealer and only for
@@ -175,4 +191,97 @@ dealers with open appointments.
 2. Before/after notes (your cash, dealer cash, XP, dealer inventory) for DS01, DS02 and DS17.
 3. `<Schedule I>/UserData/TakeItOrLeaveIt/saves/*.dealer-orders.json` while an appointment is open.
 4. Screenshots of Diagnostics for DS06, DS07 and DS12.
-5. The table in §5 filled in.
+5. The tables in §5 and §8 filled in.
+6. `<Schedule I>/UserData/TakeItOrLeaveIt/saves/*.dealer-alerts.json` after MSG02 and MSG05, and screenshots of
+   the dealer's phone conversation.
+
+## 8. Enhancement scenarios
+
+Settings as §2 unless stated. Write down the prices shown in the Products app for the strains you use, your
+cash, the dealer's cash and inventory before each scenario. Only mark PASS what you saw in game.
+
+### Customer offers (OF)
+
+| # | Setup | Action | Expected |
+| --- | --- | --- | --- |
+| OF01 | Weed = Selected Only, only Sour Diesel ticked, several Weeds listed | Wait for a few player offers (texts) | Every Weed offer names Sour Diesel |
+| OF02 | Weed = **Disabled**, Meth listed | Wait for offers | No new Weed offers; Meth offers still arrive |
+| OF03 | Dealer customers, dealer holds OG Kush and Sour Diesel, only Sour Diesel ticked | Wait for dealer offers | Dealer offers only Sour Diesel |
+| OF04 | Mod **off** for the save | Wait for offers | Vanilla offers (any listed strain); `Customer offer filter` counters do not grow |
+| OF05 | Any offer from OF01 | Open the message, journal entry and handover screen | Same product, same quantity, same payment everywhere |
+
+### Pricing (PR)
+
+| # | Setup | Action | Expected |
+| --- | --- | --- | --- |
+| PR01 | Sour Diesel priced above OG Kush, both ticked; accept a Sour Diesel order | Offer OG Kush at the handover | Refused before anything moves (*not allowed*) |
+| PR02 | Same order | Hand over a ticked strain priced at least as high as Sour Diesel | Accepted; cash changes once by the offer's payment |
+| PR03 | Same order, Mixed ON | Hand over 3 Sour Diesel + 2 of a pricier strain | Accepted, paid once |
+| PR04 | Accept an OG Kush order (cheapest) | Hand over Sour Diesel | Accepted |
+| PR05 | Dealer appointment for Sour Diesel; dealer holds only cheaper OG Kush | Let the deal time come | Nothing handed over; shortage text; OG Kush untouched |
+
+### Dealer messages (MSG)
+
+| # | Setup | Action | Expected |
+| --- | --- | --- | --- |
+| MSG01 | Load a save with hired dealers | Watch the phone for 1 minute | No burst of dealer texts on load |
+| MSG02 | Dealer holds permitted Weed | Let them sell it all (or take it back) | One text: *Yo boss, I'm out of Weed I can sell. Need you to restock me.* in that dealer's conversation, with the game's notification |
+| MSG03 | After MSG02 | Wait 2 minutes | No repeat |
+| MSG04 | After MSG02 | Give the dealer permitted Weed, then take it away again | A second out-of-stock text |
+| MSG05 | Dealer has 2 permitted Weed, appointment needs 5 | Wait a few seconds after acceptance | *Boss, I've got a customer waiting for 5 Weed, but only 2 permitted units are available. Need 3 more.* |
+| MSG06 | After MSG05 | Take one more unit away | A new text with *Need 4 more*; giving 1 back sends nothing |
+| MSG07 | Mixed OFF; dealer has 3 OG Kush + 2 Sour Diesel, appointment needs 5 | Wait | Text says *only 3 permitted units* |
+| MSG08 | Dealer holds only an unticked Weed | Wait | Counts as out of Weed (text if the dealer stocked permitted Weed before) |
+| MSG09 | After MSG02 | Save, quit, load | No repeat of the delivered text |
+| MSG10 | Weed Disabled | Dealer runs out | No Weed text |
+
+### Strict fulfilment (ST)
+
+| # | Setup | Action | Expected |
+| --- | --- | --- | --- |
+| ST01 | Only OG Kush ticked; appointment (vanilla asked for Sour Diesel); dealer has 2 OG Kush and plenty of Sour Diesel | Let the deal time come | Log `nothing handed over`; Sour Diesel and OG Kush untouched; no payment, no cut, no XP. **Note what the customer does** (refuses, leaves, contract fails) |
+| ST02 | After ST01, give the dealer enough OG Kush before the deadline | Wait | Appointment reserves; next attempt (if the game retries) delivers OG Kush; or the contract fails/expires cleanly |
+| ST03 | ST01 left to its deadline | Wait | Contract expires/fails through the game; diagnostics back to 0 appointments; nothing removed |
+| ST04 | Move a customer with an appointment to another dealer who has permitted stock | Deal time | The new dealer delivers from their own stock; the old dealer keeps theirs |
+
+### Regression (RG)
+
+| # | Action | Expected |
+| --- | --- | --- |
+| RG01 | DS01, DS02, DS17 again | Unchanged results |
+| RG02 | A Phase 03 player sale with a permitted, equally priced substitute | Accepted, paid once |
+| RG03 | Load a save that has `*.orders.json` / `*.dealer-orders.json` from the previous Phase 04 build | Log `predates the fair-price rule`; those orders accept only their requested strain |
+
+### Status table (fill in)
+
+| Scenario | Status | Notes |
+| --- | --- | --- |
+| OF01 | NOT TESTED | |
+| OF02 | NOT TESTED | |
+| OF03 | NOT TESTED | |
+| OF04 | NOT TESTED | |
+| OF05 | NOT TESTED | |
+| PR01 | NOT TESTED | |
+| PR02 | NOT TESTED | |
+| PR03 | NOT TESTED | |
+| PR04 | NOT TESTED | |
+| PR05 | NOT TESTED | |
+| MSG01 | NOT TESTED | |
+| MSG02 | NOT TESTED | |
+| MSG03 | NOT TESTED | |
+| MSG04 | NOT TESTED | |
+| MSG05 | NOT TESTED | |
+| MSG06 | NOT TESTED | |
+| MSG07 | NOT TESTED | |
+| MSG08 | NOT TESTED | |
+| MSG09 | NOT TESTED | |
+| MSG10 | NOT TESTED | |
+| ST01 | NOT TESTED | |
+| ST02 | NOT TESTED | |
+| ST03 | NOT TESTED | |
+| ST04 | NOT TESTED | |
+| RG01 | NOT TESTED | |
+| RG02 | NOT TESTED | |
+| RG03 | NOT TESTED | |
+
+Use PASS, FAIL, BLOCKED (could not set it up) or NOT TESTED.

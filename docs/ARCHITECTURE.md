@@ -245,10 +245,16 @@ Behaviour and limitations: [DEALER_SALES.md](DEALER_SALES.md). Hook evidence: [P
 | --- | --- | --- |
 | `DealerStock` | Core `Dealers/` | Immutable per-dealer stock snapshot in units; invalid/duplicate stacks ignored; change signature |
 | `ReservationLedger`, `Reservation` | Core `Dealers/` | Atomic, idempotent, per-owner holds; states Proposed/Reserved/Committing/CommitObserved/Released/Expired/Invalidated; reconcile (newest first); invariant check |
-| `DealerAppointment`, `DealerSaleCoordinator` | Core `Dealers/` | Appointment state machine incl. WaitingForEligibleStock and ReturnedToVanilla; handover plan; exactly-once settlement observation; bounded replanning |
+| `DealerAppointment`, `DealerSaleCoordinator` | Core `Dealers/` | Appointment state machine incl. WaitingForEligibleStock (strict: no return to vanilla); handover plan, withhold and rollback; dealer re-homing; exactly-once settlement observation; bounded replanning |
 | `DealerOrderStore` | Core `Dealers/` | Per-save appointment JSON (shares the order snapshot format with `ActiveOrderStore`) |
 | `DealerSalesStatus` | Core `Dealers/` | "Dealer sales: Active/Unavailable/Disabled", counts, last error |
-| `DealerSalesPatches`, `GameDealers` | Game `Sales/` (`GAME_PATCHES` only) | D1/D2 hooks by exact signature; dealer id and inventory adapter; reconcile throttle |
+| `DealerSalesPatches`, `GameDealers` | Game `Sales/` (`GAME_PATCHES` only) | D1/D2 hooks by exact signature; dealer id and inventory adapter; reconcile and notify throttle |
+| `OfferPolicy`, `OfferFilter` | Core `Sales/` | Offer decision per candidate with `SaleEligibilityPolicy` (no second engine); counters |
+| `FairPriceRule`, `ProductPrices`, `IProductPriceSource` | Core `Sales/` | Fixed-quote rule at acceptance; price snapshot stored with the order |
+| `DealerStockMonitor`, `DealerStockAlert`, `DealerAlertState`/`DealerAlertStore`, `DealerRestockNotificationCoordinator` | Core `Dealers/` | Restock decisions (Type A/B), dedup, retry, per-save alert state |
+| `OfferPatches`, `GamePrices`, `GameDealerMessagingAdapter` | Game `Sales/` (`GAME_PATCHES` only) | O1 offer-pool postfix; `ProductDefinition.Price` reader; native `MSGConversation.SendMessage` |
+
+Enhancements: [PHASE_04_ENHANCEMENTS.md](PHASE_04_ENHANCEMENTS.md).
 
 ## 7. Configuration and persistence strategy (Phase 02 / 06)
 
@@ -261,6 +267,9 @@ Behaviour and limitations: [DEALER_SALES.md](DEALER_SALES.md). Hook evidence: [P
 - Phase 04 adds `<save-id>.dealer-orders.json`: managed dealer appointments
   (`{schemaVersion, appointments:[{contract, dealer, sequence, category, requiredUnits, allowedProducts[], requestedProducts[], mixedDeliveries, policyRevision, committed}]}`).
   Reservations are deliberately not persisted; they are rebuilt from live dealer inventory after loading.
+- Phase 04 enhancements add optional `pricing`, `quotedValue` and `unitPrices{}` to each order/appointment entry
+  (schema stays 1; entries without them load through the legacy path) and `<save-id>.dealer-alerts.json`, the
+  restock-message dedup state (`{schemaVersion, categories:[...], shortages:[...]}`).
 - Deferred to Phase 06: migrations beyond schema 1, global (non-save) settings, export/import, backups/rotation.
 - Selections reference stable product IDs. Unknown or locked IDs are treated as inactive and never unlocked.
 - MelonPreferences is not used: dynamic per-save product lists need our own file.
