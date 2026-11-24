@@ -45,14 +45,14 @@ programmatically; extracted copies match the packaged hashes). **Never test or r
 | Unity version | — | Same `Game:` line |
 | MelonLoader | 0.7.3 recommended | `MelonLoader …` line |
 | S1API (S1API_Forked) | 3.2.3 | MelonLoader's mod list at the top of `Latest.log` |
-| Mod | 1.0.0-rc.1 | `TakeItOrLeaveIt 1.0.0-rc.1 by T-h07 - phase 08 …` line and Diagnostics |
+| Mod | 1.0.0-rc.2 | `TakeItOrLeaveIt 1.0.0-rc.2 by T-h07 - phase 08 …` line and Diagnostics |
 | Harmony modules / methods | 3 / 13 | `Harmony patches active: … method(s) across … module(s).` |
 | Windows / GPU / window size | — | Owner |
 | Installed DLL hashes | as §1 | `Get-FileHash` output (step 1.6) |
 
-## 3. Batch 01 instructions (RC1)
+## 3. Batch 01 instructions (RC2)
 
-Goal: prove that RC1 installs, starts cleanly, applies exactly its three patch modules, and that the **Take It**
+Goal: prove that RC2 installs, starts cleanly, applies exactly its three patch modules, and that the **Take It**
 phone app is fully usable. **No sales in this batch.** If startup is unstable, stop and send the log; nothing later is
 tested on an unstable start.
 
@@ -64,9 +64,9 @@ tested on an unstable start.
 3. Copy `<Schedule I>\UserData\TakeItOrLeaveIt\` (if it exists) somewhere safe.
 4. In the game, make a **copy** of a save to test with (or copy a save slot folder), and only load that copy.
 
-### 3.2 Install RC1
+### 3.2 Install RC2
 
-1. Unzip `TakeItOrLeaveIt-1.0.0-rc.1-Il2Cpp.zip` **into the Schedule I folder** (Steam → Schedule I → Manage →
+1. Unzip `TakeItOrLeaveIt-1.0.0-rc.2-Il2Cpp.zip` **into the Schedule I folder** (Steam → Schedule I → Manage →
    Browse local files). Replace both files when asked:
    - `Mods\TakeItOrLeaveIt.Il2Cpp.dll`
    - `UserLibs\TakeItOrLeaveIt.Core.dll`
@@ -85,7 +85,7 @@ Get-FileHash "$((Get-Location).Path)\Mods\TakeItOrLeaveIt.Il2Cpp.dll","$((Get-Lo
 2. Open `<Schedule I>\MelonLoader\Latest.log` and find these lines (order may vary):
 
 ```text
-[TakeItOrLeaveIt] TakeItOrLeaveIt 1.0.0-rc.1 by T-h07 - phase 08 - Release stabilization; build target: Il2Cpp.
+[TakeItOrLeaveIt] TakeItOrLeaveIt 1.0.0-rc.2 by T-h07 - phase 08 - Release stabilization; build target: Il2Cpp.
 [TakeItOrLeaveIt] Game: 'Schedule I' by '…', version '0.4.7f12', Unity ….
 [TakeItOrLeaveIt] MelonLoader 0.7.3; game runtime reported by loader: Il2Cpp.
 [TakeItOrLeaveIt] Compatibility: Supported; game build: BuildVerified.
@@ -93,7 +93,7 @@ Get-FileHash "$((Get-Location).Path)\Mods\TakeItOrLeaveIt.Il2Cpp.dll","$((Get-Lo
 [TakeItOrLeaveIt] Patch module applied: Dealer sales (category appointments)
 [TakeItOrLeaveIt] Patch module applied: Customer offers (policy filter)
 [TakeItOrLeaveIt] Harmony patches active: 13 method(s) across 3 module(s).
-[TakeItOrLeaveIt] Version 1.0.0-rc.1 initialized successfully.
+[TakeItOrLeaveIt] Version 1.0.0-rc.2 initialized successfully.
 [TakeItOrLeaveIt] S1API detected: the 'Take It' app is available on the in-game phone.
 [TakeItOrLeaveIt] Take It session: SinglePlayerHost: Single player host.
 ```
@@ -124,7 +124,7 @@ Use the game window size you normally play at. For every screen take one screens
 | 12 | *Select all unlocked*, *Select shown* (with a search), *Clear* | Act on this category only | P02-T19 |
 | 13 | Scroll the product list and the preview with the mouse wheel | Scrolls; check boxes still respond | P02-T27 |
 | 14 | Rules screen: scroll the effects list | Scrolls; buttons usable | P05:UI03 |
-| 15 | Diagnostics | Version **1.0.0-rc.1**; *Session and sales (Phase 07)* heading; *Rule engine* lines with schema 2, lineage count; *Save data* line; **no folder paths** | P05:IN03, P06:DG01 |
+| 15 | Diagnostics | Version **1.0.0-rc.2**; *Session and sales (Phase 07)* heading; *Rule engine* lines with schema 2, lineage count; *Save data* line; **no folder paths** | P05:IN03, P06:DG01 |
 | 16 | Press **Discard** | Every change from steps 6–12 is gone; *Unsaved changes* disappears | (Discard check) |
 | 17 | Close the phone (while the search box has focus once) | Movement and hotkeys work immediately | P02-T08 |
 | 18 | Open and close the app 10 times, visiting a different screen each time | Still one icon; no duplicate panels; no new errors in the log | P08-UI01 |
@@ -135,6 +135,11 @@ Use the game window size you normally play at. For every screen take one screens
 **Do not press Save in this batch** (saving and persistence are Batch 02/08), except that pressing Save once with no
 changes is harmless.
 
+### 3.4a Log privacy (P08-HD01, new in rc.2)
+
+Open `Latest.log` in a text editor, search for your Windows user name and for `C:\Users`. No line starting with
+`[TakeItOrLeaveIt]` may contain either (lines from MelonLoader itself or other mods do not count).
+
 ### 3.5 Send back
 
 1. `MelonLoader\Latest.log` from this session (it contains no folder paths written by the mod).
@@ -142,10 +147,10 @@ changes is harmless.
    Diagnostics; one screen at the small window size.
 3. The `Get-FileHash` output.
 4. A list `ID: PASS/FAIL/BLOCKED – note` for: P05:IN01, P08-ENV01, P08-ENV02, P02-T04 … P02-T28 (the ones in the
-   table), P05:IN02, P05:IN03, P05:UI01–UI04, P06:DG01, P08-UI01, P08-UI02. Note anything odd even if it is not on
+   table), P05:IN02, P05:IN03, P05:UI01–UI04, P06:DG01, P08-UI01, P08-UI02, P08-HD01. Note anything odd even if it is not on
    the list (stutter, a red log line, text that looks wrong).
 
-Afterwards you can keep RC1 installed; Batch 02 continues on the same build unless a fix is needed.
+Afterwards you can keep RC2 installed; Batch 02 continues on the same build unless a fix is needed.
 
 ## 4. Test order
 
@@ -168,7 +173,7 @@ test.
 
 ## 5. Tracker
 
-### Batch 01 — Startup and phone app (40 scenarios; config: SP, disposable save copy)
+### Batch 01 — Startup and phone app (41 scenarios; config: SP, disposable save copy)
 
 | ID | Subsystem | Setup | Actions | Expected | Actual | Status | RC | Game | Evidence | Issue / fix | Retest | Reuses |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -208,10 +213,11 @@ test.
 | P05:UI03 | Phone app | Rules screen with many effects | Scroll | List scrolls; buttons usable |  | NOT TESTED |  |  |  |  |  |  |
 | P05:UI04 | Phone app | Search field focused | Type | Typing does not move the player (Phase 02 behaviour) |  | NOT TESTED |  |  |  |  |  |  |
 | P06:DG01 | Diagnostics | — | Open Diagnostics in each state above | "Save data" and "Runtime files" lines match the state; no raw folder paths shown or logged |  | NOT TESTED |  |  |  |  |  |  |
-| P08-ENV01 | Startup | Batch 1 install | Record game version (main menu corner), Unity, MelonLoader, S1API, mod version from Latest.log + Diagnostics | All values recorded in the tracker header; mod version 1.0.0-rc.1 |  | NOT TESTED |  |  |  |  |  |  |
+| P08-ENV01 | Startup | Batch 1 install | Record game version (main menu corner), Unity, MelonLoader, S1API, mod version from Latest.log + Diagnostics | All values recorded in the tracker header; mod version = the RC under test |  | NOT TESTED |  |  |  |  |  |  |
 | P08-ENV02 | Startup | Batch 1 install | Count `Patch module applied` lines and the `Harmony patches active` line | 13 method(s) across 3 module(s); no `failed` line |  | NOT TESTED |  |  |  |  |  |  |
 | P08-UI01 | Phone app | Loaded save | Open/close the Take It app 10 times, switching screens each time | Stable; one icon; no duplicated UI; no errors |  | NOT TESTED |  |  |  |  |  |  |
 | P08-UI02 | Phone app | Smallest practical window and normal resolution | Visit all 7 screens at both sizes | No clipping/overlap; `Layout check ... OK` for every screen |  | NOT TESTED |  |  |  |  |  |  |
+| P08-HD01 | Log privacy (rc.2) | Batch 1 session | Search `Latest.log` for your Windows user name and for `C:\Users` | No `[TakeItOrLeaveIt]` line contains either; file names alone are fine |  | NOT TESTED |  |  |  |  |  |  |
 
 ### Batch 02 — Product discovery and policies (22 scenarios; config: SP, save with base strain + mixes)
 
@@ -240,7 +246,7 @@ test.
 | P05:UA01 | Unknown lineage | Diagnostics shows some products with unknown lineage (otherwise BLOCKED) | Products → that product | Row says *lineage unknown* |  | NOT TESTED |  |  |  |  |  |  |
 | P05:UA02 | Unknown lineage | Blocklist by base strain with anything blocked | Check that product | *Lineage unknown*, not permitted |  | NOT TESTED |  |  |  |  |  |  |
 
-### Batch 03 — Basic player sale (36 scenarios; config: SP, ≥2 unlocked Weed + 1 other category)
+### Batch 03 — Basic player sale (38 scenarios; config: SP, ≥2 unlocked Weed + 1 other category)
 
 | ID | Subsystem | Setup | Actions | Expected | Actual | Status | RC | Game | Evidence | Issue / fix | Retest | Reuses |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -273,6 +279,8 @@ test.
 | P03:S11 | Player sales | Order: Order accepted after S10; settings: — | Hand over: N OG Kush | Refused ("not allowed") |  | NOT TESTED |  |  |  |  |  |  |
 | P03:S12 | Player sales | Order: Any order accepted with the mod **OFF**; settings: mod OFF | Hand over: Exact product named in the message | Vanilla: only the exact product works |  | NOT TESTED |  |  |  |  |  |  |
 | P03:S2 | Player sales | Order: N Weed; settings: Mixed ON | Hand over: A mix of two permitted Weeds adding up to N | Accepted |  | NOT TESTED |  |  |  |  |  |  |
+| P08-HD02 | Player sales (rc.2 fail-closed change) | Order: N Weed; default settings | Hand over N of a permitted Weed that is not the named product, then repeat P03:S1–S3 | Accepted exactly as on rc.1; log has no `could not be checked right now` line in single player |  | NOT TESTED |  |  |  |  |  | P03:S1 |
+| P08-HD03 | Handover screen (rc.2 cache change) | Order with 3–4 stacks in the handover screen | Add/remove stacks, swap a stack for another strain and for another quality, wait 30 s with the screen open | The verdict/error text follows every change at once; no stutter compared with the inventory screen; no `Category match failed` line |  | NOT TESTED |  |  |  |  |  |  |
 | P03:S3 | Player sales | Order: N Weed; settings: Mixed OFF (saved **before accepting** the order) | Hand over: Same mix as S2 | Refused: "Mixed deliveries are off" |  | NOT TESTED |  |  |  |  |  |  |
 | P03:S4 | Player sales | Order: N Weed; settings: default | Hand over: N Meth or Cocaine | Refused: "only wants Weed" |  | NOT TESTED |  |  |  |  |  |  |
 | P03:S5 | Player sales | Order: N Weed; settings: Selected Only | Hand over: N of a Weed you unticked under Selected Only **before accepting** | Refused: "not allowed" |  | NOT TESTED |  |  |  |  |  |  |
@@ -358,7 +366,7 @@ test.
 | P05:SW03 | Player/dealer switches | Dealer sales OFF | A dealer appointment | `Dealer contract ... uses vanilla rules: SalesPathDisabled`; no out-of-stock texts |  | NOT TESTED |  |  |  |  |  |  |
 | P05:SW04 | Player/dealer switches | A managed order accepted, then switch its path OFF and Save | Complete the order | It keeps its accepted rules; dealer reservation kept |  | NOT TESTED |  |  |  |  |  | P06:RS01 |
 
-### Batch 07 — Dealer reservations, strict fulfilment, quality lots, restock texts (23 scenarios; config: SP, hired dealer(s))
+### Batch 07 — Dealer reservations, strict fulfilment, quality lots, restock texts (24 scenarios; config: SP, hired dealer(s))
 
 | ID | Subsystem | Setup | Actions | Expected | Actual | Status | RC | Game | Evidence | Issue / fix | Retest | Reuses |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -385,8 +393,9 @@ test.
 | P08-EH01 | Strict fulfilment | Dealer appointment with too little permitted stock (ST01 setup) | Let the dealer attend; observe for the full contract window | Record exactly: customer waits/leaves, contract fails/expires, money/XP/inventory changes, whether a later appointment works. Any completion, payment or stuck appointment = FAIL (P0/P1) |  | NOT TESTED |  |  |  |  |  |  |
 | P08-QL01 | Quality lots | Dealer holds Standard and Premium OG Kush; appointment A reserves Standard, B reserves Premium | Let A be handed over first | A removes Standard only; B keeps its Premium reservation. Log `different quality tier than reserved` = FAIL (see blocker B-03) |  | NOT TESTED |  |  |  |  |  |  |
 | P08-QL02 | Quality lots | Mixed-quality stock, three simultaneous appointments | Let all complete | Each removes its own reserved tier; totals = units delivered; no stuck appointment |  | NOT TESTED |  |  |  |  |  |  |
+| P08-HD04 | Dealer handover (rc.2 rollback change) | Dealer with permitted stock; one appointment fully covered, one short | Let both hand over | Covered one completes; short one hands over nothing; dealer stock afterwards = before − delivered units; Diagnostics shows no `Items waiting to go back to dealers` line; no `could not give a removed item back` line |  | NOT TESTED |  |  |  |  |  |  |
 
-### Batch 08 — Save, reload and recovery (32 scenarios; config: SP, two saves A/B, game closed for file edits)
+### Batch 08 — Save, reload and recovery (33 scenarios; config: SP, two saves A/B, game closed for file edits)
 
 | ID | Subsystem | Setup | Actions | Expected | Actual | Status | RC | Game | Evidence | Issue / fix | Retest | Reuses |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -416,6 +425,7 @@ test.
 | P06:RS02 | Restart/quit | Pending changes | Quit normally right after accepting an order | Log has no "could not be completed before quitting" warning; `.orders.json` contains the order |  | NOT TESTED |  |  |  |  |  |  |
 | P06:RS03 | Restart/quit | — | End the game process from Task Manager during play | Next start loads; every mod file is either the previous or the newer complete version |  | NOT TESTED |  |  |  |  |  |  |
 | P06:RT01 | Reset | Custom rules saved | Settings → Reset to defaults → confirm → Save | Defaults active; previous rules kept in `<id>.json.bak` |  | NOT TESTED |  |  |  |  |  | P02-T24 |
+| P08-HD05 | Oversized file (rc.2) | Game closed; disposable save copy; back up `UserData\TakeItOrLeaveIt\saves\` | Replace that save's `<id>.json` with any file larger than 4 MB (e.g. a copy of a large log padded with text), start, load the save, open Diagnostics; then restore the backup | Settings shown as unreadable, mod sales off for that save, the large file is unchanged on disk and not renamed; no crash; after restore everything is back |  | NOT TESTED |  |  |  |  |  |  |
 | P06:SW01 | Save switching | Active player order in A | Immediately quit to menu and load B | No order of A appears in B; log shows "Restored … for save-…" only for B's own orders |  | NOT TESTED |  |  |  |  |  |  |
 | P06:SW02 | Save switching | Dealer appointment waiting in A | Switch to B, then back to A | A's appointment is back, reservations rebuilt from the dealer's real stock |  | NOT TESTED |  |  |  |  |  |  |
 | P06:SW03 | Save switching | — | Switch saves 5 times quickly | No error, no file of one save containing another's id; loading screen not visibly slower |  | NOT TESTED |  |  |  |  |  |  |
@@ -423,7 +433,7 @@ test.
 | P06:WR02 | Write failures | WR01 | Remove read-only | Log: "written after N failed attempt(s)"; pending writes 0 |  | NOT TESTED |  |  |  |  |  |  |
 | P06:WR03 | Write failures | Make the settings file read-only | Change a rule, press Save | "Settings were NOT saved"; the rule is not shown as saved; nothing lost on disk |  | NOT TESTED |  |  |  |  |  |  |
 
-### Batch 09 — Co-op and compatibility (39 scenarios; config: Co-op, 2 PCs / 2 Steam accounts)
+### Batch 09 — Co-op and compatibility (40 scenarios; config: Co-op, 2 PCs / 2 Steam accounts)
 
 | ID | Subsystem | Setup | Actions | Expected | Actual | Status | RC | Game | Evidence | Issue / fix | Retest | Reuses |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -456,6 +466,7 @@ test.
 | P07:SA01 | Co-op session | Host alone | Host: Load a save / Client: — | Diagnostics "Session: SinglePlayerHost"; sales work as in Phase 03–06 |  | NOT TESTED |  |  |  |  |  |  |
 | P07:SA02 | Co-op session | SA01, invite open | Host: Wait for the client to join / Client: Join | Host becomes MultiplayerHostReady |  | NOT TESTED |  |  |  |  |  |  |
 | P07:SA03 | Co-op session | SA02 | Host: — / Client: Open the Take It app | Status bar "Host controls Take It settings."; Overview shows the host's rules |  | NOT TESTED |  |  |  |  |  |  |
+| P08-HD06 | Co-op authority (rc.2) | Host has an accepted category order | Client joins, leaves and joins again while the host hands the order over between the changes | Host delivery judged by category every time; at most a brief `could not be checked right now` refusal during a transition, never an exact-product decision; no stuck order |  | NOT TESTED |  |  |  |  |  |  |
 | P07:SA04 | Co-op session | SA03 | Host: — / Client: Try to change a rule, Save, Discard, Reset | All refused; nothing written |  | NOT TESTED |  |  |  |  |  |  |
 | P07:SA05 | Co-op session | SA02 | Host: Change a rule and Save / Client: Watch Overview | Client shows the new rules within a few seconds (revision 2) |  | NOT TESTED |  |  |  |  |  |  |
 | P07:SA06 | Co-op session | SA05 | Host: Change a rule, do **not** Save / Client: Watch Overview | Client keeps the saved rules (drafts are never shared) |  | NOT TESTED |  |  |  |  |  |  |

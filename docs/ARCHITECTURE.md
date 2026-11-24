@@ -327,3 +327,19 @@ resolved for its scope (`PolicyConfiguration.ForScope`).
 | Warnings as errors; nullable enabled | Catch defects early |
 | Menu logic in Core, phone app only renders | Unit-testable without the game; the UI can be replaced (e.g. hotkey fallback) without touching rules |
 | Phone app compiled only with local references | Game/S1API assemblies are proprietary or not on NuGet for IL2CPP; CI stays reproducible |
+
+## 10. Phase 08 hardening
+
+- **Fail-closed delivery hooks.** `ManagedHandoverGuard` (Core) decides what a delivery hook does: a contract the
+  coordinators *hold* (`HoldsSnapshot`: snapshot present and not ended, authority ignored) is judged by its snapshot
+  or refused; only contracts without a snapshot run the game's own rule. `Find` keeps its meaning (held *and*
+  authoritative) for everything that manages new work.
+- **Rollback failures.** `PendingReturnQueue<T>` (Core) keeps removed items that could not be given back to their
+  dealer and retries from that dealer's tick; `GameDealers.PendingReturns` is the IL2CPP instance.
+- **Identity caches.** No cache keyed by a native address survives a scene load; the handover validation cache key
+  covers every field the validation reads.
+- **Logging.** `LogText` (Core) redacts absolute paths and bounds entries; the MelonLoader adapter applies it to every
+  entry. Build output carries `/_/` paths only (`PathMap`).
+- **Files.** `PhysicalSettingsFileSystem` refuses documents over 4 MiB before reading them.
+
+Threat model: [SECURITY.md](SECURITY.md). Findings: [PHASE_08_CODE_AUDIT.md](PHASE_08_CODE_AUDIT.md).

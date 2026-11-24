@@ -32,7 +32,20 @@ retest), VERIFIED (physical retest passed), SCOPED OUT (approved scope reduction
 | B-13 | P2 | Player sales | Customer phone message / journal names the game's chosen product, not the category | ACCEPTED limitation (documented since Phase 03) | P04:OF05 | Owner to confirm for release |
 | B-14 | P3 | Docs | README, ROADMAP, INSTALLATION still describe development phases; no CHANGELOG, release notes, RELEASE_CHECKLIST | OPEN | — | Rewritten after physical results (Stage 08.12) |
 | B-15 | P3 | Process | CI artifact name did not say it lacks the game hooks; no record tying evidence to a build | FIXED (artifact renamed `TakeItOrLeaveIt-CI-no-game-hooks-<sha>`; RC table in PHASE_08_TESTING §1) | — | `docs/RELEASE_CHECKLIST.md` (hash recording per RC); evidence must quote the RC id |
-| B-16 | P3 | Logging | Startup line still reads `Phase 05: player sales hooks active; dealer sales hooks active.` (stale phase label; content correct) | OPEN | — | Reword in the next RC |
+| B-16 | P3 | Logging | Startup line still reads `Phase 05: player sales hooks active; dealer sales hooks active.` (stale phase label; content correct) | FIXED in rc.2 (now `Sales hooks: player sales hooks active; …`) | P05:IN01 | INSTALLATION.md updated |
+
+## Phase 08 hardening (rc.2)
+
+Found by the code audit ([PHASE_08_CODE_AUDIT.md](PHASE_08_CODE_AUDIT.md)), not by a physical test. FIXED means fixed
+in code with regression tests; each still needs its physical retest.
+
+| ID | Sev | Area | Issue | Status | Decides it | Disposition / next step |
+| --- | --- | --- | --- | --- | --- | --- |
+| B-17 | P1 | Player and dealer sales | **Held contract fell back to vanilla** when session authority was briefly unconfirmed or a hook threw (A-01, A-02): the game's exact-product judgement or removal ran for a contract the mod holds | FIXED in rc.2 (fail closed: refused / nothing handed over, contract kept) | P08-HD02, P08-HD03, P08-HD04, P08-HD06 | Retest on rc.2 |
+| B-18 | P0 class | Dealers | **Rollback failure lost items** (A-03): an item that could not be given back to the dealer was dropped | FIXED in rc.2 (queued and retried per dealer; reported in Diagnostics; loss after 20 attempts logged as an error) | P08-HD04 (normal path) | The failure itself cannot be provoked in play; keep watching logs for `could not give a removed item back` |
+| B-19 | P2 | Privacy / package | **Build path with the developer's user name inside the shipped DLLs** (A-07) | FIXED in rc.2 (`PathMap`; byte scan of the rc.2 DLLs finds no `Users` path) | Package check per RC | RC1 ZIP must not be shared further |
+| B-20 | P2 | Privacy / logs | **Absolute paths in log lines and diagnostics** from exception messages; untrusted text unbounded (A-08, A-09) | FIXED in rc.2 (`LogText` redaction in the log adapter) | P08-HD01 | Retest on rc.2 |
+| B-21 | P3 | Robustness | Address-keyed caches (A-04–A-06), damaged `mixedDeliveries` widened an order (A-10), unbounded file reads (A-11), one-time log cap silent (A-12) | FIXED in rc.2 | P08-HD03, P08-HD05 | Retest on rc.2 |
 
 New failures from the physical batches are added here with the next free ID, the scenario ID, the RC they were
 seen on, and a link to the fix commit.

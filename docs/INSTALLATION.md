@@ -74,7 +74,7 @@ same lines). Expected lines, in order (timestamps omitted):
 [TakeItOrLeaveIt] Dealer restock messages: Active
 [TakeItOrLeaveIt] Initialization completed.
 [TakeItOrLeaveIt] Version 0.0.1-dev initialized successfully.
-[TakeItOrLeaveIt] Phase 05: player sales hooks active; dealer sales hooks active.
+[TakeItOrLeaveIt] Sales hooks: player sales hooks active; dealer sales hooks active.
 [TakeItOrLeaveIt] S1API detected: the 'Take It' app is available on the in-game phone.
 [TakeItOrLeaveIt] Scene loaded: '<scene>' (index n).
 

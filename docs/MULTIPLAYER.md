@@ -105,3 +105,15 @@ versions, E different game builds).
   progress).
 - Whether offers the host generates for a client's customer are filtered exactly as on the host (PROBABLE).
 - Inventory and money totals in a real two-player session.
+
+## 10. Security notes (Phase 08)
+
+- The rules message carries a **SHA-256 of the rules text. It detects corruption and truncation; it is not
+  authentication.** Authenticity comes from Steam: only the lobby owner can write lobby data, and a client accepts
+  rules only from the current owner. Clients only display the host's rules; nothing a client enforces depends on them.
+- **Client handovers are not host-validated** (B-04): the client's own delivery is judged on the client by the game's
+  exact-product rule, and the host learns of it only after the items have left the client's inventory.
+- If the host briefly cannot confirm its authority (a failed session check), contracts it already holds are
+  **refused** until the next successful check instead of reverting to the game's rule.
+
+Full threat model: [SECURITY.md](SECURITY.md).

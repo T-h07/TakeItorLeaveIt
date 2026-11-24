@@ -54,3 +54,6 @@ All rows are simulation results; none is runtime verified.
   and if one is missing it removes every Take It patch and the game runs vanilla ("Unavailable" in the status
   report). A client whose hooks failed is still read-only (it never manages anything).
 - Generated RPC methods (names with a hash suffix) are never patched, so a hash change cannot break a hook.
+- Phase 08: a hook that cannot check a contract the mod already holds (authority not confirmed, an unexpected game
+  object) refuses that delivery instead of falling back to the game's exact-product rule; the contract stays open.
+  See [SECURITY.md](SECURITY.md).

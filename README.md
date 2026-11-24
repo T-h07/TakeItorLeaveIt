@@ -126,6 +126,9 @@ See [docs/BUILDING.md](docs/BUILDING.md) (output locations, optional auto-deploy
 | [docs/PHASE_08_RELEASE_AUDIT.md](docs/PHASE_08_RELEASE_AUDIT.md) | Phase 08 release-readiness audit: baseline, assumptions, client-handover investigation, decisions needed |
 | [docs/PHASE_08_TESTING.md](docs/PHASE_08_TESTING.md) | Phase 08 master acceptance tracker (all Phase 01–07 IDs), release candidates, batch instructions |
 | [docs/PHASE_08_RELEASE_BLOCKERS.md](docs/PHASE_08_RELEASE_BLOCKERS.md) | Release blockers P0–P3 and their status |
+| [docs/PHASE_08_CODE_AUDIT.md](docs/PHASE_08_CODE_AUDIT.md) | Phase 08 security, transaction and runtime-safety audit: findings, fixes, verification |
+| [docs/SECURITY.md](docs/SECURITY.md) | Threat model: trust boundaries, fail-closed rules, what is out of scope, reporting |
+| [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | Hot paths and synthetic measurements (not game timings) |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Project boundaries, adapter design, eligibility engine, S1API evaluation |
 | [docs/BUILDING.md](docs/BUILDING.md) | Build, test, package, local deploy |
 | [docs/INSTALLATION.md](docs/INSTALLATION.md) | Installing and verifying the development DLL |

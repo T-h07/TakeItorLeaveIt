@@ -131,3 +131,7 @@ FishNet or Unity, none of which is bundled.
 3. Batches 02–11 in order; B-02/B-03 decided after Batch 07, B-05 after Batch 09.
 4. Owner decisions: B-04 (co-op scope), B-12 (Mono), B-11/B-13 (limitations).
 5. Docs, changelog, release notes, checklist; final RC; approval; promotion.
+
+**Hardening (rc.2):** the code audit, threat model and performance notes are in
+[PHASE_08_CODE_AUDIT.md](PHASE_08_CODE_AUDIT.md), [SECURITY.md](SECURITY.md) and [PERFORMANCE.md](PERFORMANCE.md);
+the fixes are B-17 … B-21 in [PHASE_08_RELEASE_BLOCKERS.md](PHASE_08_RELEASE_BLOCKERS.md).
