@@ -24,8 +24,12 @@ internal static class GameDealers
     private static readonly Stopwatch Clock = Stopwatch.StartNew();
     private static readonly Dictionary<IntPtr, string> DealerIds = new();
     private static readonly Dictionary<string, long> NextReconcile = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, double> NextNotify = new(StringComparer.Ordinal);
 
     public static DealerSaleCoordinator? Coordinator { get; set; }
+
+    /// <summary>Restock messages (null when not wired). Checked from the dealer's tick, throttled in Core.</summary>
+    public static DealerRestockNotificationCoordinator? Notifier { get; set; }
 
     /// <summary>The dealer's NPC id as a file-safe token (stable across sessions), or null.</summary>
     public static string? DealerId(Dealer? dealer)
@@ -115,7 +119,46 @@ internal static class GameDealers
         if (report.Changed)
         {
             GameSales.Log?.Info($"Dealer {id} stock reconciled: {report.Reserved.Count} reserved, {report.Invalidated.Count} invalidated, " +
-                                $"{report.ReturnedToVanilla.Count} returned to vanilla, {report.StillWaiting} waiting ({stock}).");
+                                $"{report.StillWaiting} waiting ({stock}).");
+        }
+    }
+
+    /// <summary>
+    /// Restock messages for a hired dealer (from the dealer's tick). Reads the stock at most once per
+    /// <see cref="DealerRestockNotificationCoordinator.EvaluateIntervalSeconds"/> per dealer; sends due messages
+    /// through the game's conversation and reports each result (a failed send is retried later, never counted).
+    /// </summary>
+    public static void MaybeNotify(Dealer dealer)
+    {
+        var notifier = Notifier;
+        if (notifier is null || notifier.SaveIdentity is null || !GameDealerMessagingAdapter.Available || !dealer.IsRecruited)
+        {
+            return;
+        }
+
+        var id = DealerId(dealer);
+        if (id is null)
+        {
+            return;
+        }
+
+        var now = Clock.Elapsed.TotalSeconds;
+        if (NextNotify.TryGetValue(id, out var next) && now < next)
+        {
+            return;
+        }
+
+        NextNotify[id] = now + DealerRestockNotificationCoordinator.EvaluateIntervalSeconds;
+        var stock = Stock(dealer);
+        if (stock is null)
+        {
+            return;
+        }
+
+        foreach (var alert in notifier.Evaluate(stock))
+        {
+            var sent = GameDealerMessagingAdapter.TrySend(dealer, alert.Text, out var failure);
+            notifier.Report(alert, sent, failure);
         }
     }
 
@@ -123,6 +166,7 @@ internal static class GameDealers
     {
         DealerIds.Clear();
         NextReconcile.Clear();
+        NextNotify.Clear();
     }
 
     private static string? Token(string? raw)

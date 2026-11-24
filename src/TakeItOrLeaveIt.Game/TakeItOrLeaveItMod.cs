@@ -184,8 +184,11 @@ public sealed class TakeItOrLeaveItMod : MelonMod
 #if GAME_PATCHES
         Sales.PlayerSalesPatches.MarkRemoved();
         Sales.DealerSalesPatches.MarkRemoved();
+        Sales.OfferPatches.MarkRemoved();
+        Sales.OfferPatches.Filter = null;
         Sales.GameSales.Coordinator = null;
         Sales.GameDealers.Coordinator = null;
+        Sales.GameDealers.Notifier = null;
         Sales.GameDealers.Reset();
 #endif
         _sales?.Shutdown();
@@ -227,8 +230,14 @@ public sealed class TakeItOrLeaveItMod : MelonMod
         Sales.GameSales.CatalogGeneration = () => _discovery.Catalog.State.Snapshot?.Generation ?? -1;
         Sales.SalesSession.Catalog = () => _discovery.Catalog.State.Snapshot;
         Sales.GameDealers.Coordinator = _sales.Dealers;
+        Sales.GameDealers.Notifier = _sales.Notifier;
+        Sales.OfferPatches.Filter = _sales.Offers;
+        _sales.Coordinator.Prices = Sales.GamePrices.Source;
+        _sales.Dealers.Prices = Sales.GamePrices.Source;
+        Sales.GameDealerMessagingAdapter.Probe();
         modules.Add(new Sales.PlayerSalesPatches());
         modules.Add(new Sales.DealerSalesPatches());
+        modules.Add(new Sales.OfferPatches());
 #endif
         _patches = new PatchManager(HarmonyInstance, _log, modules);
         try
@@ -241,15 +250,22 @@ public sealed class TakeItOrLeaveItMod : MelonMod
 #if GAME_PATCHES
             Sales.GameSales.Coordinator = null;
             Sales.GameDealers.Coordinator = null;
+            Sales.GameDealers.Notifier = null;
+            Sales.OfferPatches.Filter = null;
 #endif
-            _sales.SetHooks(false, false, "a game method could not be patched (see the error above); vanilla sales rules apply");
+            _sales.SetHooks(false, false, false, false, "a game method could not be patched (see the error above); vanilla sales rules apply");
             return;
         }
 
 #if GAME_PATCHES
-        _sales.SetHooks(Sales.PlayerSalesPatches.Applied, Sales.DealerSalesPatches.Applied, "not applied");
+        _sales.SetHooks(Sales.PlayerSalesPatches.Applied, Sales.DealerSalesPatches.Applied, Sales.OfferPatches.Applied,
+            Sales.GameDealerMessagingAdapter.Available, Sales.GameDealerMessagingAdapter.UnavailableReason ?? "not applied");
+        if (!Sales.GameDealerMessagingAdapter.Available)
+        {
+            _log.Warning($"Dealer restock messages are off: {Sales.GameDealerMessagingAdapter.UnavailableReason}. Sales are not affected.");
+        }
 #else
-        _sales.SetHooks(false, false, BuildTarget.Runtime == GameRuntime.Mono
+        _sales.SetHooks(false, false, false, false, BuildTarget.Runtime == GameRuntime.Mono
             ? "the Mono build has no game references; use the IL2CPP build"
             : "built without local game references (see docs/BUILDING.md)");
 #endif
