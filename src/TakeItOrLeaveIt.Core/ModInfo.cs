@@ -16,7 +16,7 @@ public static class ModInfo
     /// Mod version (release candidates carry an -rc.N suffix). Must equal the <c>InformationalVersion</c> in Directory.Build.props
     /// (enforced by a unit test).
     /// </summary>
-    public const string Version = "1.0.0-rc.1";
+    public const string Version = "1.0.0-rc.2";
 
     /// <summary>Current development phase, reported in diagnostics.</summary>
     public const string Phase = "08 - Release stabilization";

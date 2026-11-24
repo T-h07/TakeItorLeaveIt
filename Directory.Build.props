@@ -24,7 +24,7 @@
     <Product>TakeItOrLeaveIt</Product>
     <!-- Single source of truth for the mod version. ModInfo.Version must match (checked by a unit test). -->
     <Version>1.0.0</Version>
-    <InformationalVersion>1.0.0-rc.1</InformationalVersion>
+    <InformationalVersion>1.0.0-rc.2</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 </Project>
