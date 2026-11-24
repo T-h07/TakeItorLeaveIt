@@ -157,7 +157,7 @@ internal sealed class DealerSalesPatches : IPatchModule
                         continue;
                     }
 
-                    var itemUnits = (long)item.Quantity * (item.TryCast<Il2CppScheduleOne.Product.ProductItemInstance>()?.Amount ?? 1);
+                    var itemUnits = (long)item.Quantity * item.Amount;
                     units += itemUnits;
                     removedItems.Add(item);
                     // Phase 07: record what actually left (product and tier); the game's removal takes a minimum, not a lot.
