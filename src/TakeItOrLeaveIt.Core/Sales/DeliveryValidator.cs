@@ -11,14 +11,18 @@ namespace TakeItOrLeaveIt.Core.Sales;
 /// <summary>One item stack the player put in the handover slots.</summary>
 public sealed class DeliveredItem
 {
-    public DeliveredItem(string slotId, string? productId, int quantity, int unitsPerItem, bool isPackaged)
+    public DeliveredItem(string slotId, string? productId, int quantity, int unitsPerItem, bool isPackaged, QualityTier? quality = null)
     {
         SlotId = slotId;
         ProductId = productId;
         Quantity = quantity;
         UnitsPerItem = unitsPerItem;
         IsPackaged = isPackaged;
+        Quality = quality;
     }
+
+    /// <summary>The item's quality tier (Phase 05); null when it could not be read.</summary>
+    public QualityTier? Quality { get; }
 
     /// <summary>Position in the handover list; unique per delivery.</summary>
     public string SlotId { get; }
@@ -55,6 +59,12 @@ public enum DeliveryRejection
 
     /// <summary>The basket is worth less than the agreed quote at the acceptance prices (fair-price rule).</summary>
     BelowQuotedValue,
+
+    /// <summary>An item is below the order's minimum quality (Phase 05).</summary>
+    QualityTooLow,
+
+    /// <summary>A minimum quality applies but an item's quality could not be read (Phase 05).</summary>
+    QualityUnknown,
 }
 
 public sealed class DeliveryValidation
@@ -94,6 +104,9 @@ public sealed class DeliveryValidation
 
     public string? OffendingSlot { get; }
 
+    /// <summary>The product of the offending item, when the rejection concerns one product.</summary>
+    public ProductKey? OffendingProduct { get; internal set; }
+
     /// <summary>Short player-facing text for the handover screen.</summary>
     public string Message { get; }
 }
@@ -107,7 +120,12 @@ public sealed class DeliveryValidation
 /// </summary>
 public static class DeliveryValidator
 {
-    public static DeliveryValidation Validate(CategoryOrder order, IReadOnlyList<DeliveredItem?>? items, ProductCatalogSnapshot? catalog)
+    /// <param name="order">The acceptance-time snapshot.</param>
+    /// <param name="items">The handover items.</param>
+    /// <param name="catalog">The live catalog.</param>
+    /// <param name="explain">Optional: a more specific reason for a product the order does not allow (Phase 05 explanations).
+    /// The decision itself never depends on it.</param>
+    public static DeliveryValidation Validate(CategoryOrder order, IReadOnlyList<DeliveredItem?>? items, ProductCatalogSnapshot? catalog, Func<ProductKey, string?>? explain = null)
     {
         if (order is null)
         {
@@ -142,7 +160,7 @@ public static class DeliveryValidator
                 products.Add(key);
             }
 
-            stacks.Add(new InventoryStack(item.SlotId, key, (int)Math.Min(item.Units, int.MaxValue)));
+            stacks.Add(new InventoryStack(item.SlotId, key, (int)Math.Min(item.Units, int.MaxValue), item.Quality));
         }
 
         products.Sort();
@@ -166,7 +184,7 @@ public static class DeliveryValidator
                 total, products, plan, null);
         }
 
-        if (!order.MixedDeliveries && products.Count > 1)
+        if (products.Count > 1 && !order.CanCombine(products))
         {
             return Reject(order, DeliveryRejection.MixedNotAllowed, total, products, plan, null);
         }
@@ -197,7 +215,14 @@ public static class DeliveryValidator
         DeliveryValidation Reject(CategoryOrder o, DeliveryRejection reason, long units, List<ProductKey> seen, AllocationPlan? p, string? slot)
         {
             seen.Sort();
-            return new DeliveryValidation(o, reason, units, seen, p, slot, Describe(o, reason, units, catalog));
+            var offending = slot is null ? null : stacks.FirstOrDefault(s => string.Equals(s.StackId, slot, StringComparison.Ordinal))?.Product;
+            var message = Describe(o, reason, units, catalog);
+            if (reason == DeliveryRejection.ProductNotAllowed && offending is { } product && explain?.Invoke(product) is { Length: > 0 } detail)
+            {
+                message = detail;
+            }
+
+            return new DeliveryValidation(o, reason, units, seen, p, slot, message) { OffendingProduct = offending };
         }
     }
 
@@ -209,6 +234,8 @@ public static class DeliveryValidator
             EligibilityReason.WrongCategory => DeliveryRejection.WrongCategory,
             EligibilityReason.ProductLocked or EligibilityReason.UnlockStateUnknown => DeliveryRejection.ProductLocked,
             EligibilityReason.CatalogNotReady => DeliveryRejection.CatalogNotReady,
+            EligibilityReason.QualityTooLow => DeliveryRejection.QualityTooLow,
+            EligibilityReason.QualityUnknown => DeliveryRejection.QualityUnknown,
             _ => DeliveryRejection.ProductNotAllowed,
         },
         _ => DeliveryRejection.InvalidItem,
@@ -228,11 +255,15 @@ public static class DeliveryValidator
             DeliveryRejection.WrongCategory => $"This customer only wants {category}.",
             DeliveryRejection.ProductNotAllowed => $"One of the products is not allowed for {category} orders (Take It settings).",
             DeliveryRejection.ProductLocked => "One of the products is not unlocked.",
-            DeliveryRejection.MixedNotAllowed => "Mixed deliveries are off: use one product only.",
+            DeliveryRejection.MixedNotAllowed => order.Mixing == MixingMode.SingleBaseStrain
+                ? "Mixed deliveries are limited to one base strain for this order."
+                : "Mixed deliveries are disabled for this order: use one product only.",
             DeliveryRejection.CatalogNotReady => "Product data is still loading. Try again in a moment.",
             DeliveryRejection.TooFew => $"Needs {order.RequiredUnits} {category}: you offered {deliveredUnits}.",
             DeliveryRejection.TooMany => $"Needs exactly {order.RequiredUnits} {category}: you offered {deliveredUnits}.",
             DeliveryRejection.BelowQuotedValue => "These products are worth less than the agreed price.",
+            DeliveryRejection.QualityTooLow => $"The item quality is below your minimum ({order.MinimumQuality} or better).",
+            DeliveryRejection.QualityUnknown => "The item quality could not be read, so it cannot be checked against your minimum.",
             _ => "Delivery refused.",
         };
     }

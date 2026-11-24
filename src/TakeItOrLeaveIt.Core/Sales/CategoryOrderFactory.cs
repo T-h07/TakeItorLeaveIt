@@ -24,12 +24,16 @@ public sealed class OrderLine
 /// <summary>What the game knows about a contract at acceptance.</summary>
 public sealed class OrderRequest
 {
-    public OrderRequest(string? contractId, bool isPlayerContract, IEnumerable<OrderLine?>? lines)
+    public OrderRequest(string? contractId, bool isPlayerContract, IEnumerable<OrderLine?>? lines, QualityTier? requiredQuality = null)
     {
         ContractId = contractId;
         IsPlayerContract = isPlayerContract;
         Lines = (lines ?? Array.Empty<OrderLine?>()).ToList();
+        RequiredQuality = requiredQuality;
     }
+
+    /// <summary>The customer's own quality requirement (highest tier over the contract's lines), when known.</summary>
+    public QualityTier? RequiredQuality { get; }
 
     public string? ContractId { get; }
 
@@ -54,6 +58,12 @@ public enum OrderOutcome
 
     /// <summary>No eligible product is worth at least the quoted unit price (see <see cref="FairPriceRule"/>).</summary>
     NoFairProduct,
+
+    /// <summary>Player or dealer sales are switched off for this save (Phase 05): vanilla rules for that path.</summary>
+    SalesPathDisabled,
+
+    /// <summary>Mixing is "requested only" and the rules do not permit the requested product (Phase 05).</summary>
+    RequestedNotPermitted,
 }
 
 public sealed class OrderCreation
@@ -93,10 +103,12 @@ public static class CategoryOrderFactory
     /// The same snapshot for a contract a hired dealer will fulfil (Phase 04). Identical rules: one category,
     /// the live policy's eligible products, the mixed-deliveries setting. Player contracts are refused here.
     /// </summary>
-    public static OrderCreation CreateForDealer(OrderRequest? request, PolicyConfiguration? policy, ProductCatalogSnapshot? catalog, IProductPriceSource? prices = null)
-        => Build(request, policy, catalog, prices, forDealer: true);
+    /// <para>Phase 05: <paramref name="dealerId"/> resolves that dealer's overrides (<see cref="PolicyConfiguration.ForScope"/>), and the
+    /// snapshot's quality minimum includes the customer's own requirement, because the game's dealer removal enforces it.</para>
+    public static OrderCreation CreateForDealer(OrderRequest? request, PolicyConfiguration? policy, ProductCatalogSnapshot? catalog, IProductPriceSource? prices = null, string? dealerId = null)
+        => Build(request, policy, catalog, prices, forDealer: true, dealerId);
 
-    private static OrderCreation Build(OrderRequest? request, PolicyConfiguration? policy, ProductCatalogSnapshot? catalog, IProductPriceSource? prices, bool forDealer)
+    private static OrderCreation Build(OrderRequest? request, PolicyConfiguration? policy, ProductCatalogSnapshot? catalog, IProductPriceSource? prices, bool forDealer, string? dealerId = null)
     {
         if (request is null || !CategoryOrder.IsValidContractId(request.ContractId))
         {
@@ -114,6 +126,14 @@ public static class CategoryOrderFactory
         {
             return Vanilla(OrderOutcome.ModDisabled, "Mod disabled for this save: vanilla rules.");
         }
+
+        var scope = forDealer ? SalesScope.Dealer(dealerId) : SalesScope.Player;
+        if (!policy.IsPathEnabled(scope))
+        {
+            return Vanilla(OrderOutcome.SalesPathDisabled, (forDealer ? "Dealer" : "Player") + " sales are off for this save: vanilla rules.");
+        }
+
+        policy = policy.ForScope(scope);
 
         if (catalog is null)
         {
@@ -161,11 +181,27 @@ public static class CategoryOrderFactory
             return Vanilla(OrderOutcome.CategoryNotEligible, $"{category}: {eligibility.Reason}; vanilla rules.");
         }
 
-        var fair = FairPriceRule.Apply(requested, eligibility.EligibleProducts.Select(p => p.Key), prices);
+        var eligible = eligibility.EligibleProducts.Select(p => p.Key).ToList();
+        if (policy.Mixing == MixingMode.RequestedOnly)
+        {
+            eligible = eligible.Where(p => requested.Any(r => r.Product == p)).ToList();
+            if (eligible.Count == 0)
+            {
+                return Vanilla(OrderOutcome.RequestedNotPermitted, $"{category}: requested-only mixing and the requested product is not permitted.");
+            }
+        }
+
+        var fair = FairPriceRule.Apply(requested, eligible, prices);
         if (fair.Allowed.Count == 0)
         {
             return Vanilla(OrderOutcome.NoFairProduct, $"{category}: no permitted product is worth the quoted price ({fair.Detail}).");
         }
+
+        var rule = policy.GetEffectivePolicy(category.Value);
+        var minimum = forDealer ? QualityTiers.Max(rule.MinimumQuality, request.RequiredQuality) : rule.MinimumQuality;
+        var groups = policy.Mixing == MixingMode.SingleBaseStrain
+            ? fair.Allowed.Select(p => new KeyValuePair<ProductKey, IReadOnlyList<string>>(p, catalog.GetBaseStrains(p).Select(b => b.Value).ToArray())).ToList()
+            : null;
 
         var order = new CategoryOrder(
             request.ContractId!,
@@ -177,7 +213,10 @@ public static class CategoryOrderFactory
             requested.Select(r => r.Product),
             fair.Basis,
             fair.QuotedValue,
-            fair.Prices);
+            fair.Prices,
+            policy.Mixing,
+            groups,
+            minimum);
         return new OrderCreation(OrderOutcome.Managed, order, order.ToString());
     }
 

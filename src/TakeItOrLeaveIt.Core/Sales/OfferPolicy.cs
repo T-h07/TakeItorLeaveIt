@@ -28,12 +28,26 @@ public enum OfferDecision
 public static class OfferPolicy
 {
     public static OfferDecision Evaluate(PolicyConfiguration? policy, ProductCatalogSnapshot? catalog, string? productId)
+        => Evaluate(policy, catalog, productId, SalesScope.Player);
+
+    /// <summary>
+    /// Phase 05: the offer is judged with the rules of its path: the player's (global) rules for offers to the player,
+    /// the dealer's effective rules (overrides included) for offers to a hired dealer. A path that is switched off
+    /// stays vanilla.
+    /// </summary>
+    public static OfferDecision Evaluate(PolicyConfiguration? policy, ProductCatalogSnapshot? catalog, string? productId, SalesScope scope)
     {
-        if (policy is null || !policy.Enabled || catalog is null)
+        if (policy is null || !policy.IsPathEnabled(scope) || catalog is null)
         {
             return OfferDecision.Vanilla;
         }
 
+        return Resolved(policy.ForScope(scope), catalog, productId);
+    }
+
+    /// <summary>Decision with a policy already resolved for its scope (no switch checks).</summary>
+    internal static OfferDecision Resolved(PolicyConfiguration policy, ProductCatalogSnapshot catalog, string? productId)
+    {
         if (!ProductKey.TryCreate(productId, out var key) || !catalog.TryGetProduct(key, out var product))
         {
             return OfferDecision.Excluded; // unknown to the catalog: never offered while the mod is on (fail closed)
@@ -77,18 +91,23 @@ public sealed class OfferFilter
     /// Filters a candidate pool in place through <paramref name="productIdAt"/> / <paramref name="removeAt"/>.
     /// Returns how many candidates were removed (0 when the mod does not apply).
     /// </summary>
-    public int Filter(int count, Func<int, string?> productIdAt, Action<int> removeAt)
+    public int Filter(int count, Func<int, string?> productIdAt, Action<int> removeAt) => Filter(count, productIdAt, removeAt, SalesScope.Player);
+
+    /// <summary>Filters a candidate pool for one path (player, or the dealer the offer goes to).</summary>
+    public int Filter(int count, Func<int, string?> productIdAt, Action<int> removeAt, SalesScope scope)
     {
-        if (count <= 0 || productIdAt is null || removeAt is null || !Applies(out var policy, out var catalog))
+        if (count <= 0 || productIdAt is null || removeAt is null || !Applies(out var policy, out var catalog) || !policy.IsPathEnabled(scope))
         {
             return 0;
         }
+
+        policy = policy.ForScope(scope);
 
         var removed = 0;
         for (var i = count - 1; i >= 0; i--)
         {
             CandidatesSeen++;
-            if (OfferPolicy.Evaluate(policy, catalog, productIdAt(i)) == OfferDecision.Excluded)
+            if (OfferPolicy.Resolved(policy, catalog!, productIdAt(i)) == OfferDecision.Excluded)
             {
                 removeAt(i);
                 removed++;
@@ -105,8 +124,10 @@ public sealed class OfferFilter
     }
 
     /// <summary>Same decision for one product (diagnostics and tests).</summary>
-    public OfferDecision Decide(string? productId)
-        => Applies(out var policy, out var catalog) ? OfferPolicy.Evaluate(policy, catalog, productId) : OfferDecision.Vanilla;
+    public OfferDecision Decide(string? productId) => Decide(productId, SalesScope.Player);
+
+    public OfferDecision Decide(string? productId, SalesScope scope)
+        => Applies(out var policy, out var catalog) ? OfferPolicy.Evaluate(policy, catalog, productId, scope) : OfferDecision.Vanilla;
 
     public IReadOnlyList<string> StatusLines(bool hookActive)
         => new[]

@@ -12,11 +12,12 @@ namespace TakeItOrLeaveIt.Core.Inventory;
 /// </summary>
 public sealed class InventoryStack
 {
-    public InventoryStack(string stackId, ProductKey product, int quantity)
+    public InventoryStack(string stackId, ProductKey product, int quantity, QualityTier? quality = null)
     {
         StackId = stackId;
         Product = product;
         Quantity = quantity;
+        Quality = quality;
     }
 
     public string StackId { get; }
@@ -25,18 +26,25 @@ public sealed class InventoryStack
 
     public int Quantity { get; }
 
-    public override string ToString() => $"{StackId}: {Quantity} x {Product}";
+    /// <summary>The stack's quality tier (Phase 05); null when unknown or not relevant.</summary>
+    public QualityTier? Quality { get; }
+
+    public override string ToString() => Quality is null ? $"{StackId}: {Quantity} x {Product}" : $"{StackId}: {Quantity} x {Product} ({Quality})";
 }
 
 /// <summary>A proposed draw from one stack.</summary>
 public sealed class StackAllocation
 {
-    internal StackAllocation(string stackId, ProductKey product, int quantity)
+    internal StackAllocation(string stackId, ProductKey product, int quantity, QualityTier? quality = null)
     {
         StackId = stackId;
         Product = product;
         Quantity = quantity;
+        Quality = quality;
     }
+
+    /// <summary>Quality of the stack drawn from (Phase 05); null when unknown.</summary>
+    public QualityTier? Quality { get; }
 
     public string StackId { get; }
 

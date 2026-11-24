@@ -156,6 +156,7 @@ public sealed class JsonPolicyStore : IPolicyStore
         var temp = path + ".tmp";
         _fs.CreateDirectory(_directory);
         PreserveUnreadable(path);
+        PreserveOlderSchema(path, settings.SchemaVersion);
         try
         {
             _fs.WriteAllText(temp, PolicySettingsJson.ToJson(settings));
@@ -182,6 +183,32 @@ public sealed class JsonPolicyStore : IPolicyStore
         catch (Exception ex) when (ex is FormatException or InvalidDataException)
         {
             _fs.CopyFile(path, path + ".unreadable.bak");
+        }
+    }
+
+    /// <summary>
+    /// Before a newer schema replaces an older file for the first time, the older file is copied once to
+    /// <c>&lt;file&gt;.schema&lt;n&gt;.bak</c> (never overwritten), so the Phase 01-04 settings stay recoverable.
+    /// </summary>
+    private void PreserveOlderSchema(string path, int newSchema)
+    {
+        if (!_fs.FileExists(path))
+        {
+            return;
+        }
+
+        try
+        {
+            var existing = PolicySettingsJson.FromJson(_fs.ReadAllText(path));
+            var backup = $"{path}.schema{existing.SchemaVersion}.bak";
+            if (existing.SchemaVersion < newSchema && !_fs.FileExists(backup))
+            {
+                _fs.CopyFile(path, backup);
+            }
+        }
+        catch (Exception ex) when (ex is FormatException or InvalidDataException)
+        {
+            // unreadable files are preserved by PreserveUnreadable
         }
     }
 
@@ -214,25 +241,121 @@ public static class PolicySettingsJson
 {
     public static string ToJson(PolicySettings settings)
     {
-        var categories = new Dictionary<string, object?>(StringComparer.Ordinal);
-        foreach (var pair in (settings.Categories ?? new Dictionary<string, CategoryPolicySettings>()).OrderBy(p => p.Key, StringComparer.Ordinal))
-        {
-            categories[pair.Key] = new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["mode"] = pair.Value?.Mode,
-                ["selectedProducts"] = (pair.Value?.SelectedProducts ?? new List<string>()).Cast<object?>().ToList(),
-            };
-        }
-
         var root = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["schemaVersion"] = settings.SchemaVersion,
             ["enabled"] = settings.Enabled,
             ["defaultMode"] = settings.DefaultMode,
             ["mixedDeliveries"] = settings.MixedDeliveries,
-            ["categories"] = categories,
+            ["categories"] = WriteCategories(settings.Categories, settings.SchemaVersion >= 2),
         };
+
+        if (settings.SchemaVersion >= 2)
+        {
+            root["mixing"] = settings.Mixing;
+            root["playerSales"] = settings.PlayerSales;
+            root["dealerSales"] = settings.DealerSales;
+            var dealers = new Dictionary<string, object?>(StringComparer.Ordinal);
+            foreach (var pair in (settings.Dealers ?? new Dictionary<string, DealerPolicySettings>()).OrderBy(p => p.Key, StringComparer.Ordinal))
+            {
+                dealers[pair.Key] = new Dictionary<string, object?>(StringComparer.Ordinal)
+                {
+                    ["categories"] = WriteCategories(pair.Value?.Categories, true),
+                };
+            }
+
+            root["dealers"] = dealers;
+        }
+
         return MiniJson.Write(root);
+    }
+
+    private static Dictionary<string, object?> WriteCategories(Dictionary<string, CategoryPolicySettings>? input, bool advanced)
+    {
+        var categories = new Dictionary<string, object?>(StringComparer.Ordinal);
+        foreach (var pair in (input ?? new Dictionary<string, CategoryPolicySettings>()).OrderBy(p => p.Key, StringComparer.Ordinal))
+        {
+            var body = new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["mode"] = pair.Value?.Mode,
+                ["selectedProducts"] = Strings(pair.Value?.SelectedProducts),
+            };
+            if (advanced)
+            {
+                body["match"] = pair.Value?.Match ?? "exact";
+                body["blockedProducts"] = Strings(pair.Value?.BlockedProducts);
+                body["minQuality"] = pair.Value?.MinQuality;
+                if (pair.Value?.Effects is { } effects)
+                {
+                    body["effects"] = new Dictionary<string, object?>(StringComparer.Ordinal)
+                    {
+                        ["match"] = effects.Match ?? "all",
+                        ["required"] = Strings(effects.Required),
+                        ["excluded"] = Strings(effects.Excluded),
+                    };
+                }
+            }
+
+            categories[pair.Key] = body;
+        }
+
+        return categories;
+    }
+
+    private static List<object?> Strings(List<string>? values) => (values ?? new List<string>()).Cast<object?>().ToList();
+
+    private static List<string> ReadStrings(Dictionary<string, object?> body, string name)
+        => body.TryGetValue(name, out var raw) && raw is List<object?> items ? items.OfType<string>().ToList() : new List<string>();
+
+    private static bool ReadBool(Dictionary<string, object?> root, string name)
+    {
+        if (!root.TryGetValue(name, out var raw) || raw is null)
+        {
+            return true;
+        }
+
+        return raw is bool value ? value : throw new InvalidDataException(name + " must be true or false.");
+    }
+
+    private static Dictionary<string, CategoryPolicySettings> ReadCategories(object? cats)
+    {
+        var result = new Dictionary<string, CategoryPolicySettings>(StringComparer.Ordinal);
+        if (cats is null)
+        {
+            return result;
+        }
+
+        if (cats is not Dictionary<string, object?> map)
+        {
+            throw new InvalidDataException("categories must be an object.");
+        }
+
+        foreach (var pair in map)
+        {
+            var entry = new CategoryPolicySettings { SelectedProducts = new List<string>() };
+            if (pair.Value is Dictionary<string, object?> body)
+            {
+                entry.Mode = body.TryGetValue("mode", out var m) ? m as string : null;
+                // Non-string entries are skipped here; PolicyConfiguration.FromSettings validates the rest.
+                entry.SelectedProducts = ReadStrings(body, "selectedProducts");
+                entry.BlockedProducts = ReadStrings(body, "blockedProducts");
+                entry.Match = body.TryGetValue("match", out var match) ? match as string : null;
+                entry.MinQuality = body.TryGetValue("minQuality", out var q) ? q as string : null;
+                if (body.TryGetValue("effects", out var e) && e is Dictionary<string, object?> effects)
+                {
+                    entry.Effects = new EffectRuleSettings
+                    {
+                        Match = effects.TryGetValue("match", out var em) ? em as string : null,
+                        Required = ReadStrings(effects, "required"),
+                        Excluded = ReadStrings(effects, "excluded"),
+                    };
+                }
+            }
+
+            result[pair.Key] = entry;
+        }
+
+        return result;
     }
 
     /// <summary>Throws <see cref="FormatException"/> / <see cref="InvalidDataException"/> when the text is not a settings document.</summary>
@@ -251,6 +374,9 @@ public static class PolicySettingsJson
             Enabled = !root.TryGetValue("enabled", out var e) || e is not bool enabled || enabled,
             DefaultMode = root.TryGetValue("defaultMode", out var dm) ? dm as string : null,
             MixedDeliveries = !root.TryGetValue("mixedDeliveries", out var md) || md is not bool mixed || mixed,
+            Mixing = root.TryGetValue("mixing", out var mx) ? mx as string : null,
+            PlayerSales = ReadBool(root, "playerSales"),
+            DealerSales = ReadBool(root, "dealerSales"),
             Categories = new Dictionary<string, CategoryPolicySettings>(StringComparer.Ordinal),
         };
 
@@ -264,27 +390,21 @@ public static class PolicySettingsJson
             throw new InvalidDataException("mixedDeliveries must be true or false.");
         }
 
-        if (root.TryGetValue("categories", out var cats) && cats is not null)
+        settings.Categories = ReadCategories(root.TryGetValue("categories", out var cats) ? cats : null);
+        if (root.TryGetValue("dealers", out var rawDealers) && rawDealers is not null)
         {
-            if (cats is not Dictionary<string, object?> map)
+            if (rawDealers is not Dictionary<string, object?> dealers)
             {
-                throw new InvalidDataException("categories must be an object.");
+                throw new InvalidDataException("dealers must be an object.");
             }
 
-            foreach (var pair in map)
+            settings.Dealers = new Dictionary<string, DealerPolicySettings>(StringComparer.Ordinal);
+            foreach (var pair in dealers)
             {
-                var entry = new CategoryPolicySettings { SelectedProducts = new List<string>() };
-                if (pair.Value is Dictionary<string, object?> body)
+                settings.Dealers[pair.Key] = new DealerPolicySettings
                 {
-                    entry.Mode = body.TryGetValue("mode", out var m) ? m as string : null;
-                    if (body.TryGetValue("selectedProducts", out var sel) && sel is List<object?> items)
-                    {
-                        // Non-string entries are skipped here; PolicyConfiguration.FromSettings validates the rest.
-                        entry.SelectedProducts.AddRange(items.OfType<string>());
-                    }
-                }
-
-                settings.Categories[pair.Key] = entry;
+                    Categories = pair.Value is Dictionary<string, object?> body && body.TryGetValue("categories", out var dc) ? ReadCategories(dc) : new Dictionary<string, CategoryPolicySettings>(),
+                };
             }
         }
 

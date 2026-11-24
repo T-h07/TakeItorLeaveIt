@@ -41,6 +41,33 @@ public enum EligibilityReason
     NoEligibleProducts,
 
     InvalidQuantity,
+
+    /// <summary>Blocklist: the product (or, by base strain, one of its ancestors) is blocked.</summary>
+    ProductBlocked,
+
+    /// <summary>A base-strain rule needs the product's ancestry, but the game's mix recipes could not be read (fail closed).</summary>
+    AncestryUnknown,
+
+    /// <summary>The product lacks a required effect.</summary>
+    EffectMissing,
+
+    /// <summary>The product has an excluded effect.</summary>
+    EffectExcluded,
+
+    /// <summary>An effect rule is active but the product's effects could not be read (fail closed).</summary>
+    EffectsUnknown,
+
+    /// <summary>The category's effect rule can never be met (an effect both required and excluded).</summary>
+    EffectRuleContradictory,
+
+    /// <summary>A physical stack is below the category's minimum quality.</summary>
+    QualityTooLow,
+
+    /// <summary>A minimum quality is set but the stack's quality could not be read (fail closed).</summary>
+    QualityUnknown,
+
+    /// <summary>Player or dealer sales are switched off for this save (vanilla for that path).</summary>
+    SalesPathDisabled,
 }
 
 /// <summary>Result of evaluating one product for one requested category.</summary>
@@ -145,6 +172,15 @@ public static class EligibilityText
         EligibilityReason.ProductNotSelected => "Not selected in your rules.",
         EligibilityReason.NoEligibleProducts => "No product in this category is currently eligible.",
         EligibilityReason.InvalidQuantity => "The quantity is not valid.",
+        EligibilityReason.ProductBlocked => "Blocked by your rules.",
+        EligibilityReason.AncestryUnknown => "Base strain could not be confirmed (the game's mix recipes are not readable), so it is not used.",
+        EligibilityReason.EffectMissing => "Does not have the required effect(s).",
+        EligibilityReason.EffectExcluded => "Has an excluded effect.",
+        EligibilityReason.EffectsUnknown => "Its effects could not be read, so the effect rule cannot be checked.",
+        EligibilityReason.EffectRuleContradictory => "The effect rule can never be met (an effect is both required and excluded).",
+        EligibilityReason.QualityTooLow => "The item quality is below your minimum.",
+        EligibilityReason.QualityUnknown => "The item quality could not be read, so the quality rule cannot be checked.",
+        EligibilityReason.SalesPathDisabled => "These sales are switched off in your settings; the game's normal rules apply.",
         _ => reason.ToString(),
     };
 }

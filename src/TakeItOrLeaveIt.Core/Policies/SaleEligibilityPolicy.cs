@@ -20,8 +20,13 @@ namespace TakeItOrLeaveIt.Core.Policies;
 /// <item>product of another category → <see cref="EligibilityReason.WrongCategory"/></item>
 /// <item>category Disabled → <see cref="EligibilityReason.CategoryDisabled"/></item>
 /// <item>not unlocked → <see cref="EligibilityReason.ProductLocked"/> / <see cref="EligibilityReason.UnlockStateUnknown"/></item>
-/// <item>SelectedOnly: empty selection → <see cref="EligibilityReason.NoProductsSelected"/>; not selected → <see cref="EligibilityReason.ProductNotSelected"/></item>
+/// <item>allowlist: empty selection → <see cref="EligibilityReason.NoProductsSelected"/>; not selected → <see cref="EligibilityReason.ProductNotSelected"/>;
+/// blocklist: blocked → <see cref="EligibilityReason.ProductBlocked"/>. By base strain, a listed product also covers every product the game
+/// records as mixed from it; unknown ancestry → <see cref="EligibilityReason.AncestryUnknown"/> unless the product itself is listed.</item>
+/// <item>effect rule → <see cref="EligibilityReason.EffectRuleContradictory"/> / <see cref="EligibilityReason.EffectsUnknown"/> /
+/// <see cref="EligibilityReason.EffectExcluded"/> / <see cref="EligibilityReason.EffectMissing"/></item>
 /// </list>
+/// Quality is not a product property: <see cref="CheckQuality"/> judges physical stacks with the same rule.
 /// </summary>
 public static class SaleEligibilityPolicy
 {
@@ -82,20 +87,90 @@ public static class SaleEligibilityPolicy
                 return Decide(EligibilityReason.UnlockStateUnknown);
         }
 
-        if (rule.Mode == PolicyMode.SelectedOnly)
+        var selection = CheckSelection(rule, snapshot, descriptor);
+        if (selection != EligibilityReason.Allowed)
         {
-            if (rule.SelectedProducts.Count == 0)
-            {
-                return Decide(EligibilityReason.NoProductsSelected);
-            }
-
-            if (!rule.IsSelected(product))
-            {
-                return Decide(EligibilityReason.ProductNotSelected);
-            }
+            return Decide(selection);
         }
 
-        return Decide(EligibilityReason.Allowed);
+        return Decide(rule.Effects.Check(descriptor.EffectIds, descriptor.EffectsKnown));
+    }
+
+    /// <summary>
+    /// Quality step of the pipeline for one physical stack: the category's minimum (if any) against the stack's tier.
+    /// Unknown quality fails only when a minimum is set.
+    /// </summary>
+    public static EligibilityReason CheckQuality(PolicyConfiguration policy, CategoryKey category, QualityTier? quality)
+    {
+        var minimum = (policy ?? PolicyConfiguration.Default).GetEffectivePolicy(category).MinimumQuality;
+        if (minimum is null)
+        {
+            return EligibilityReason.Allowed;
+        }
+
+        if (quality is null)
+        {
+            return EligibilityReason.QualityUnknown;
+        }
+
+        return quality.Value >= minimum.Value ? EligibilityReason.Allowed : EligibilityReason.QualityTooLow;
+    }
+
+    private static EligibilityReason CheckSelection(CategoryPolicy rule, ProductCatalogSnapshot snapshot, ProductDescriptor product)
+    {
+        switch (rule.Mode)
+        {
+            case PolicyMode.SelectedOnly:
+                if (rule.SelectedProducts.Count == 0)
+                {
+                    return EligibilityReason.NoProductsSelected;
+                }
+
+                if (rule.IsSelected(product.Key))
+                {
+                    return EligibilityReason.Allowed;
+                }
+
+                if (rule.Match == SelectionMatch.BaseStrain)
+                {
+                    if (rule.SelectedProducts.Any(s => snapshot.IsSameOrDescendantOf(product.Key, s)))
+                    {
+                        return EligibilityReason.Allowed;
+                    }
+
+                    if (!product.AncestryKnown)
+                    {
+                        return EligibilityReason.AncestryUnknown;
+                    }
+                }
+
+                return EligibilityReason.ProductNotSelected;
+
+            case PolicyMode.Blocklist:
+                if (rule.IsBlocked(product.Key))
+                {
+                    return EligibilityReason.ProductBlocked;
+                }
+
+                if (rule.Match == SelectionMatch.BaseStrain && rule.BlockedProducts.Count > 0)
+                {
+                    if (rule.BlockedProducts.Any(b => snapshot.IsSameOrDescendantOf(product.Key, b)))
+                    {
+                        return EligibilityReason.ProductBlocked;
+                    }
+
+                    if (!product.AncestryKnown)
+                    {
+                        // It might descend from a blocked strain: never sell it on a guess.
+                        return EligibilityReason.AncestryUnknown;
+                    }
+                }
+
+                return EligibilityReason.Allowed;
+
+            default:
+                return EligibilityReason.Allowed;
+        }
     }
 
     /// <summary>Summarises a category: is anything eligible, which products, and which selections are inactive.</summary>
@@ -107,7 +182,7 @@ public static class SaleEligibilityPolicy
         var noKeys = new ProductKey[0];
 
         CategoryEligibility Summary(EligibilityReason reason, IReadOnlyList<ProductDescriptor> eligible, int unlocked, IReadOnlyList<ProductKey> inactive)
-            => new(category, rule.Mode, reason, eligible, unlocked, rule.SelectedProducts.Count, inactive, snapshot?.Generation, policy.Revision);
+            => new(category, rule.Mode, reason, eligible, unlocked, rule.ActiveList.Count, inactive, snapshot?.Generation, policy.Revision);
 
         if (!policy.Enabled)
         {
@@ -130,7 +205,7 @@ public static class SaleEligibilityPolicy
         }
 
         var unlocked = snapshot.GetUnlockedProducts(category);
-        var inactive = rule.SelectedProducts
+        var inactive = rule.ActiveList
             .Where(k => !snapshot.TryGetProduct(k, out var p) || !p.IsUnlocked || p.Category != category)
             .ToArray();
 
@@ -144,10 +219,12 @@ public static class SaleEligibilityPolicy
             return Summary(EligibilityReason.NoProductsSelected, empty, unlocked.Count, inactive);
         }
 
-        var eligible = rule.Mode == PolicyMode.SelectedOnly
-            ? unlocked.Where(p => rule.IsSelected(p.Key)).ToArray()
-            : unlocked.ToArray();
+        if (rule.Effects.IsContradictory)
+        {
+            return Summary(EligibilityReason.EffectRuleContradictory, empty, unlocked.Count, inactive);
+        }
 
+        var eligible = unlocked.Where(p => Evaluate(policy, snapshot, category, p.Key).IsEligible).ToArray();
         return Summary(eligible.Length > 0 ? EligibilityReason.Allowed : EligibilityReason.NoEligibleProducts, eligible, unlocked.Count, inactive);
     }
 
