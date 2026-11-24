@@ -19,7 +19,7 @@ order** and, if so, stores a **snapshot** next to it:
 
 | Condition | Result |
 | --- | --- |
-| The contract is handled by a dealer | Vanilla (dealers are Phase 04) |
+| The contract is handled by a dealer | Not a player order: handled by dealer sales ([DEALER_SALES.md](DEALER_SALES.md)) |
 | Mod off for this save, or settings not loaded / unreadable | Vanilla |
 | Product catalog not ready, unknown product, invalid quantity | Vanilla |
 | The order lists products from more than one category | Vanilla |
@@ -31,8 +31,11 @@ The snapshot holds: contract GUID, category, total units (sum of the order lines
 for that category at that moment (sorted IDs), the mixed-deliveries setting, and the policy revision. It never
 holds game objects.
 
-Offer generation is untouched: customers still pick offers the vanilla way, so there is no retry loop to get
-stuck in and no offer the game would not make by itself.
+Customers pick offers the vanilla way, but since the Phase 04 enhancements only from products the live settings
+permit (the candidate list is filtered before the game chooses and prices; no retry loop, no offer the game
+would not make by itself). At acceptance the mod also reads the game's unit prices: a substitute must be worth
+at least the quoted unit price, so the fixed payment never exceeds what is delivered. Details:
+[PHASE_04_ENHANCEMENTS.md §1-§2](PHASE_04_ENHANCEMENTS.md#1-customer-offers-follow-the-settings).
 
 ## 2. Handover validation
 
@@ -160,11 +163,13 @@ report says **Unavailable** with the reason, and the game runs vanilla.
 
 ## 10. Known limitations
 
-- The customer's phone message and the journal entry still name the product the game picked; the handover
-  screen shows the real requirement (category, units, permitted products).
+- The customer's phone message and the journal entry name the product the game picked (always a permitted one
+  while the mod is on); the handover screen shows the real requirement (category, units, permitted products).
+- Substitutes cheaper than the quoted unit price are refused (fair-price rule); a product with no readable
+  price allows only the requested product(s).
 - More units than ordered are refused (no verified partial-stack hand-in).
 - The match/similarity split, the units formula and whether the game scales payment with the match are
   PROBABLE (call graph), confirmed only by the in-game tests.
 - `HandoverScreenContractMode.GetError` returning `true` for "there is an error" is PROBABLE; if it were the
   opposite, the match hook alone still blocks invalid deliveries (they score 0).
-- Single player only; dealers unchanged (Phase 04); no quality/effect rules yet (Phase 05).
+- Single player only; dealers: see [DEALER_SALES.md](DEALER_SALES.md); no quality/effect rules yet (Phase 05).

@@ -9,7 +9,15 @@
 > were checked against the call graph of the installed Schedule I v0.4.7f12 IL2CPP build. The verified
 > signatures, call edges and the hooks the mod now uses are in
 > **[PHASE_03_PATCH_ANALYSIS.md](PHASE_03_PATCH_ANALYSIS.md)**, which supersedes this file for those rows.
-> Dealer rows (Phase 04) are unchanged.
+>
+> **Phase 04 update:** the dealer rows (DLR-*, dealer flow in §8) were checked the same way. Verified signatures,
+> call edges and the two dealer hooks (D1 `Dealer.RemoveContractItems` prefix, D2 `Dealer.OnTick` postfix) are in
+> **[PHASE_04_PATCH_ANALYSIS.md](PHASE_04_PATCH_ANALYSIS.md)**, which supersedes this file for those rows.
+>
+> **Phase 04 enhancements:** offer hook O1 (`Customer.GetOrderableProductsWithQuantities(Dealer)` postfix, row
+> CUS-12), price reads (`Registry.GetItem` → `ProductDefinition.Price`) and dealer texts
+> (`NPC.MSGConversation` → `MSGConversation.SendMessage`) are verified in
+> [PHASE_04_PATCH_ANALYSIS.md §8-§11](PHASE_04_PATCH_ANALYSIS.md#8-enhancements-overview).
 
 ## 1. How to read this map
 
@@ -58,6 +66,7 @@ acceptance, payment...), which is how the **UNVERIFIED** rows get filled in.
 | CUS-09 | Assembly-CSharp | `Quests.Contract` / `UI.Handover.HandoverScreenContractMode` | **Handover acceptance**: `Contract.GetProductListMatch(List<ItemInstance>, ref int)` (+ `List<ProductItemInstance>` overload), gate `HandoverScreenContractMode.GetError(ref string)` | Core of Phase 03 | See PHASE_03_PATCH_ANALYSIS §2 | installed-build xref | **Patched in Phase 03** (prefix on both overloads, postfix on GetError) for mod-managed contracts only | High | IL2CPP | **verified** (existence, call edges) | 03 |
 | CUS-10 | Assembly-CSharp | `Economy.Customer` | **Satisfaction**: `EvaluateDelivery(Contract, List<ItemInstance>, ref float, ref EDrugType, ref int, ref float)`, which calls CUS-09 | Recipe penalty enters through the match | See PHASE_03_PATCH_ANALYSIS §2 | installed-build xref | Not patched: receives the CUS-09 result (quality kept, recipe dropped) | High | IL2CPP | **verified** (edge); formula PROBABLE | 03 |
 | CUS-11 | — | `ScheduleOne.NPCs.Relation.NPCRelationData` | Relationship change method(s): only `Unlock(EUnlockType)` seen | Relationship progression | UNVERIFIED for deltas | E1 (`Unlock` only) | Do not patch; must stay vanilla | Medium | Both* | unresolved | 03 |
+| CUS-12 | Assembly-CSharp | `Customer` | `List<Tuple<ProductDefinition,int>> GetOrderableProductsWithQuantities(Dealer)` | Candidate pool for every customer offer (player and dealer) | Callers: `GetWeightedRandomProduct`, `GetOrderableProducts`, `ShouldTryApproachPlayer`; new list per call | installed-build xref | **O1 postfix** removes candidates the live policy excludes; choice and pricing stay vanilla | Medium | IL2CPP | **verified** (signature, edges); empty-pool effect probable | 04 |
 
 ## 3. Orders / contracts (`ScheduleOne.Quests`, `ScheduleOne.Product`)
 
@@ -124,8 +133,8 @@ only as a secondary check and for "base strain" grouping. **Never** match on dis
 | DLR-05 | Assembly-CSharp? | `Dealer` | `Action onContractAccepted` (public field) | Event when a dealer accepts a contract | Fired on acceptance | E1 (+E3 lookup) | Subscribe (no patch) for diagnostics | Low | Both* | probable | 04 |
 | DLR-06 | Assembly-CSharp? | `Dealer` | `Load(DynamicSaveData, NPCData)` | Restores dealer state from save | Load pipeline | E2 | Postfix only if dealer reservations need restoring | Medium | Both* | probable | 06 |
 | DLR-07 | Assembly-CSharp? | `ScheduleOne.UI.Phone.Messages.DealerManagementApp` | `SetOpen(…)` (parameters UNVERIFIED), `Refresh()` | Vanilla dealer management phone UI | — | E2 | Not needed | — | Both* | probable | 02 (UI reference) |
-| DLR-08 | — | UNVERIFIED | **Dealer stock search** for a contract (exact-product match) | Where a dealer looks for matching inventory | UNVERIFIED | — | Prefix/replace matching with the shared eligibility engine | **High** | UNVERIFIED | unresolved | 04 |
-| DLR-09 | — | UNVERIFIED | Inventory **reservation**, sale completion, missing-stock handling, cancellation | Dealer sale lifecycle | UNVERIFIED | — | Observe first | High | UNVERIFIED | unresolved | 04 |
+| DLR-08 | Assembly-CSharp | `Dealer` | **Dealer stock search**: `RemoveContractItems(Contract, EQuality, ref List<ItemInstance>)` → `RemoveAndReturnProductFromInventory(string, int, EQuality)` → `FilterAndSortSlots(...)` (exact product id) | Where a dealer takes contract stock | Handover coroutine of `DealerAttendDealBehaviour` (single caller) | Call graph (Phase 04) | **D1 prefix** on `RemoveContractItems` for managed appointments; removal through the game's own method | High | IL2CPP | verified (existence, edges) | 04 |
+| DLR-09 | Assembly-CSharp | `Dealer` / Core ledger | Reservation (none in vanilla), completion (`ProcessHandoverServerSide` → `SubmitPayment`), cancellation (`Contract.End/Expire/Fail`) | Dealer sale lifecycle | See PHASE_04_PATCH_ANALYSIS §1 | Call graph (Phase 04) | Mod-side `ReservationLedger`; observe settlement; **D2 postfix** on `OnTick` to reconcile | High | IL2CPP | verified (edges) / reservation is mod-side | 04 |
 
 ## 6. Economy, XP and lifecycle
 
@@ -166,11 +175,13 @@ CustomerData (PreferredProperties, Standards, affinities)          CUS-06/07/08 
 ### Dealer sale
 
 ```text
-Dealer.AssignedCustomers → contract assigned to dealer (ActiveContracts)   DLR-01 probable, DLR-02 unresolved
-  → onContractAccepted                                             DLR-05 probable
-  → stock selection (exact match)                                  DLR-08 UNVERIFIED  ← Phase 04 core hook
-  → reservation / completion / cancellation                        DLR-09 UNVERIFIED
-  → payment split by Cut, Dealer.Cash, CollectCash()               DLR-03/04 unresolved
+Dealer.ContractedOffered → Customer.ContractAccepted → QuestManager.ContractAccepted   verified (Phase 04) ← snapshot + reservation
+  → Dealer.AddContract → Contract.SetDealer                                       verified
+  → Dealer.OnTick → CheckAttendStart → DealerAttendDealBehaviour.AssignContract   verified ← D2 reconcile (observe)
+  → handover routine → Dealer.RemoveContractItems → RemoveAndReturnProductFromInventory
+                                                                                  verified ← D1 category fulfilment
+  → Customer.ProcessHandoverServerSide → Dealer.SubmitPayment, AddDealerMoney     verified (vanilla payment/cut)
+  → Contract.Complete/End/Expire/Fail                                             verified ← reservation released
 ```
 
 ### Smallest safe runtime observations (for a later, explicitly approved diagnostics build)

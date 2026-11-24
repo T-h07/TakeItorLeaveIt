@@ -41,6 +41,9 @@ public sealed class PlayerSaleCoordinator
     /// </summary>
     public Func<bool>? PolicyReady { get; set; }
 
+    /// <summary>The game's unit prices, read at acceptance for the fair-price rule. Null disables substitution.</summary>
+    public IProductPriceSource? Prices { get; set; }
+
     /// <summary>The save the book belongs to; null outside a loaded save.</summary>
     public string? SaveIdentity { get; private set; }
 
@@ -104,7 +107,7 @@ public sealed class PlayerSaleCoordinator
         }
         else
         {
-            result = CategoryOrderFactory.Create(request, _policies.Current, _catalog());
+            result = CategoryOrderFactory.Create(request, _policies.Current, _catalog(), Prices);
         }
 
         if (result.Order is not null && !_book.TryAdd(result.Order))

@@ -543,7 +543,7 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
             }
         }
 
-        Heading(c, "Player sales");
+        Heading(c, "Player and dealer sales");
         foreach (var line in menu.SalesStatus?.Invoke() ?? new[] { "Player Sales: status unavailable" })
         {
             Line(c, line, Theme.TextMuted, Theme.SmallSize);

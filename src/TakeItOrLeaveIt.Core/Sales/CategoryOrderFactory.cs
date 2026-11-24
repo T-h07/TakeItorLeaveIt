@@ -51,6 +51,9 @@ public enum OrderOutcome
     UnknownProduct,
     MixedCategories,
     CategoryNotEligible,
+
+    /// <summary>No eligible product is worth at least the quoted unit price (see <see cref="FairPriceRule"/>).</summary>
+    NoFairProduct,
 }
 
 public sealed class OrderCreation
@@ -79,16 +82,32 @@ public sealed class OrderCreation
 /// </summary>
 public static class CategoryOrderFactory
 {
-    public static OrderCreation Create(OrderRequest? request, PolicyConfiguration? policy, ProductCatalogSnapshot? catalog)
+    /// <summary>
+    /// Player contract snapshot. <c>prices</c> are the game's unit prices at acceptance; null or missing prices
+    /// disable substitution (requested products only), see <see cref="FairPriceRule"/>.
+    /// </summary>
+    public static OrderCreation Create(OrderRequest? request, PolicyConfiguration? policy, ProductCatalogSnapshot? catalog, IProductPriceSource? prices = null)
+        => Build(request, policy, catalog, prices, forDealer: false);
+
+    /// <summary>
+    /// The same snapshot for a contract a hired dealer will fulfil (Phase 04). Identical rules: one category,
+    /// the live policy's eligible products, the mixed-deliveries setting. Player contracts are refused here.
+    /// </summary>
+    public static OrderCreation CreateForDealer(OrderRequest? request, PolicyConfiguration? policy, ProductCatalogSnapshot? catalog, IProductPriceSource? prices = null)
+        => Build(request, policy, catalog, prices, forDealer: true);
+
+    private static OrderCreation Build(OrderRequest? request, PolicyConfiguration? policy, ProductCatalogSnapshot? catalog, IProductPriceSource? prices, bool forDealer)
     {
         if (request is null || !CategoryOrder.IsValidContractId(request.ContractId))
         {
             return Vanilla(OrderOutcome.InvalidContract, "Contract has no usable id.");
         }
 
-        if (!request.IsPlayerContract)
+        if (request.IsPlayerContract == forDealer)
         {
-            return Vanilla(OrderOutcome.NotPlayerContract, "Dealer contract: vanilla rules.");
+            return forDealer
+                ? Vanilla(OrderOutcome.InvalidContract, "Player contract: not a dealer order.")
+                : Vanilla(OrderOutcome.NotPlayerContract, "Dealer contract: handled by dealer sales.");
         }
 
         if (policy is null || !policy.Enabled)
@@ -108,7 +127,7 @@ public static class CategoryOrderFactory
 
         long units = 0;
         CategoryKey? category = null;
-        var requested = new List<ProductKey>();
+        var requested = new List<(ProductKey Product, int Quantity)>();
         foreach (var line in request.Lines)
         {
             if (line is null || line.Quantity <= 0 || !ProductKey.TryCreate(line.ProductId, out var key))
@@ -127,7 +146,7 @@ public static class CategoryOrderFactory
             }
 
             category = product.Category;
-            requested.Add(key);
+            requested.Add((key, line.Quantity));
             units += line.Quantity;
         }
 
@@ -142,14 +161,23 @@ public static class CategoryOrderFactory
             return Vanilla(OrderOutcome.CategoryNotEligible, $"{category}: {eligibility.Reason}; vanilla rules.");
         }
 
+        var fair = FairPriceRule.Apply(requested, eligibility.EligibleProducts.Select(p => p.Key), prices);
+        if (fair.Allowed.Count == 0)
+        {
+            return Vanilla(OrderOutcome.NoFairProduct, $"{category}: no permitted product is worth the quoted price ({fair.Detail}).");
+        }
+
         var order = new CategoryOrder(
             request.ContractId!,
             category.Value,
             (int)units,
-            eligibility.EligibleProducts.Select(p => p.Key),
+            fair.Allowed,
             policy.MixedDeliveries,
             policy.Revision,
-            requested);
+            requested.Select(r => r.Product),
+            fair.Basis,
+            fair.QuotedValue,
+            fair.Prices);
         return new OrderCreation(OrderOutcome.Managed, order, order.ToString());
     }
 

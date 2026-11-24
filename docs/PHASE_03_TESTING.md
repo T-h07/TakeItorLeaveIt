@@ -14,7 +14,7 @@
    ```
 
    The build output must contain both lines
-   `TakeItOrLeaveIt: building WITH the S1API phone app` and `TakeItOrLeaveIt: building WITH the player-sales game hooks`.
+   `TakeItOrLeaveIt: building WITH the S1API phone app` and `TakeItOrLeaveIt: building WITH the player and dealer sales game hooks`.
    Copy `artifacts/package/Il2Cpp/Mods/TakeItOrLeaveIt.Il2Cpp.dll` to `<Schedule I>/Mods/` and
    `artifacts/package/Il2Cpp/UserLibs/TakeItOrLeaveIt.Core.dll` to `<Schedule I>/UserLibs/` (replace both).
 3. Launch, load the backup copy of the save, and check `MelonLoader/Latest.log`:
@@ -22,6 +22,12 @@
    ```text
    [TakeItOrLeaveIt] Patch module applied: Player sales (category orders)
    [TakeItOrLeaveIt] Harmony patches active: 10 method(s) across 1 module(s).
+   ```
+
+   With the Phase 04 build the log shows `13 method(s) across 3 module(s)` (player sales, dealer sales,
+   customer offers); see [PHASE_04_TESTING.md](PHASE_04_TESTING.md).
+
+   ```text
    [TakeItOrLeaveIt] Player Sales: ...
    [TakeItOrLeaveIt] Offer hook: Active
    [TakeItOrLeaveIt] Handover validation: Active

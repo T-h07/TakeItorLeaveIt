@@ -81,6 +81,12 @@ internal sealed class PlayerSalesPatches : IPatchModule
             }
 
             SalesSession.RefreshAuthority();
+            if (dealer is not null)
+            {
+                DealerAccepted(__result, dealer);
+                return;
+            }
+
             var creation = coordinator.OnContractAccepted(GameSales.ToRequest(__result, dealer is null));
             if (creation.IsManaged)
             {
@@ -97,6 +103,24 @@ internal sealed class PlayerSalesPatches : IPatchModule
         }
     }
 
+    /// <summary>Phase 04: a hired dealer's contract becomes a category appointment with a stock reservation.</summary>
+    private static void DealerAccepted(Contract contract, Dealer dealer)
+    {
+        var dealers = GameDealers.Coordinator;
+        if (dealers is null)
+        {
+            GameSales.Log?.Info($"Contract {GameSales.ContractId(contract)} uses vanilla rules: dealer sales unavailable.");
+            return;
+        }
+
+        var dealerId = GameDealers.DealerId(dealer);
+        var stock = dealerId is null ? null : GameDealers.Stock(dealer);
+        var creation = dealers.OnContractAccepted(GameSales.ToRequest(contract, isPlayerContract: false), dealerId, stock);
+        GameSales.Log?.Info(creation.IsManaged
+            ? $"Dealer appointment created: {creation.Detail}."
+            : $"Dealer contract {GameSales.ContractId(contract)} uses vanilla rules: {creation.Outcome} ({creation.Detail})");
+    }
+
     // ---- P3-03/04: the match every judge of a delivery uses ------------------------------------------
 
     private static bool MatchItemsPrefix(Contract __instance, ItemList items, ref int matchedProductCount, ref float __result)
@@ -110,7 +134,7 @@ internal sealed class PlayerSalesPatches : IPatchModule
     {
         try
         {
-            if (items is null || GameSales.Managed(contract, out var id) is null)
+            if (items is null || !GameSales.ManagedAny(contract, out var id))
             {
                 return true;
             }
@@ -188,12 +212,20 @@ internal sealed class PlayerSalesPatches : IPatchModule
         try
         {
             var coordinator = GameSales.Coordinator;
-            if (coordinator is null || GameSales.Managed(contract, out var id) is null)
+            if (coordinator is null || !GameSales.ManagedAny(contract, out var id))
             {
                 return;
             }
 
-            if (coordinator.OnHandoverProcessed(id) == CommitObservation.First)
+            var dealers = GameDealers.Coordinator;
+            if (dealers?.Find(id) is not null)
+            {
+                if (dealers.OnHandoverProcessed(id) == CommitObservation.First)
+                {
+                    GameSales.Log?.Info($"Dealer order {id}: handover processed by the game (payment, dealer cut and XP are vanilla's).");
+                }
+            }
+            else if (coordinator.OnHandoverProcessed(id) == CommitObservation.First)
             {
                 GameSales.Log?.Info($"Order {id}: handover processed by the game (payment, XP and items are vanilla's).");
             }
@@ -219,7 +251,8 @@ internal sealed class PlayerSalesPatches : IPatchModule
         try
         {
             var coordinator = GameSales.Coordinator;
-            if (coordinator is null || coordinator.Book.Count == 0 || contract is null)
+            var dealers = GameDealers.Coordinator;
+            if (contract is null || ((coordinator is null || coordinator.Book.Count == 0) && (dealers is null || dealers.ActiveAppointments == 0)))
             {
                 return;
             }
@@ -234,10 +267,17 @@ internal sealed class PlayerSalesPatches : IPatchModule
                 _ => fallback,
             };
             var id = GameSales.ContractId(contract);
-            var ended = coordinator.OnContractEnded(id, end);
+            var ended = coordinator?.OnContractEnded(id, end);
             if (ended is not null)
             {
                 GameSales.Log?.Info($"Order {id} ended ({ended.State}, {ended.CommitCount} handover(s) observed); snapshot removed.");
+                GameSales.InvalidateCache();
+            }
+
+            var appointment = dealers?.OnContractEnded(id, end);
+            if (appointment is not null)
+            {
+                GameSales.Log?.Info($"Dealer order {id} ended ({appointment.State}, {appointment.RemovedUnits} unit(s) removed, {appointment.CommitCount} handover(s) observed); reservation released.");
                 GameSales.InvalidateCache();
             }
         }

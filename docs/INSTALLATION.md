@@ -1,12 +1,13 @@
 # Installation (development build 0.0.1-dev)
 
-> Phase 03 build: it discovers products, adds the **Take It** phone app where you configure per-save product
-> rules, and (IL2CPP build with local game references) applies them to **customer orders**: accepted orders
-> take any permitted product of their category ([PLAYER_SALES.md](PLAYER_SALES.md)). Payment, XP, items and
-> contract completion stay with the game; dealers, products and game saves are not changed. **Back up your
-> save before testing**: Phase 03 is not yet tested in game. Phase 00 loading was verified on Schedule I
-> v0.4.7f12 (IL2CPP); in-game steps: [PHASE_01_TESTING.md](PHASE_01_TESTING.md),
-> [PHASE_02_TESTING.md](PHASE_02_TESTING.md), [PHASE_03_TESTING.md](PHASE_03_TESTING.md).
+> Phase 04 build: it discovers products, adds the **Take It** phone app where you configure per-save product
+> rules, and (IL2CPP build with local game references) applies them to **customer orders** and **hired-dealer
+> appointments**: accepted orders take any permitted product of their category ([PLAYER_SALES.md](PLAYER_SALES.md),
+> [DEALER_SALES.md](DEALER_SALES.md)). Payment, the dealer's cut, XP, item transfer and contract completion stay
+> with the game; products and game saves are not changed. **Back up your save before testing**: Phases 03 and 04
+> are not yet tested in game. Phase 00 loading was verified on Schedule I v0.4.7f12 (IL2CPP); in-game steps:
+> [PHASE_01_TESTING.md](PHASE_01_TESTING.md), [PHASE_02_TESTING.md](PHASE_02_TESTING.md),
+> [PHASE_03_TESTING.md](PHASE_03_TESTING.md), [PHASE_04_TESTING.md](PHASE_04_TESTING.md).
 
 ## 1. Compatibility
 
@@ -53,19 +54,28 @@ same lines). Expected lines, in order (timestamps omitted):
 [TakeItOrLeaveIt] Product discovery initialized (read-only; polling save state about once per second).
 [TakeItOrLeaveIt] Mod menu settings initialized (stored per save under UserData/TakeItOrLeaveIt/saves).
 [TakeItOrLeaveIt] Patch module applied: Player sales (category orders)
-[TakeItOrLeaveIt] Harmony patches active: 10 method(s) across 1 module(s).
+[TakeItOrLeaveIt] Patch module applied: Dealer sales (category appointments)
+[TakeItOrLeaveIt] Patch module applied: Customer offers (policy filter)
+[TakeItOrLeaveIt] Harmony patches active: 13 method(s) across 3 module(s).
 [TakeItOrLeaveIt] Player Sales: Waiting for a save and product data
 [TakeItOrLeaveIt] Runtime: Il2Cpp
 [TakeItOrLeaveIt] ... (catalog, policy, Offer hook: Active, Handover validation: Active, Transaction integration: Active, session, orders)
+[TakeItOrLeaveIt] Dealer sales: Waiting for a save and product data
+[TakeItOrLeaveIt] ... (Dealer appointment hook / fulfilment hook / stock reconcile: Active, appointments, reservations)
+[TakeItOrLeaveIt] Customer offer filter: Active
+[TakeItOrLeaveIt] Fair pricing: Active (substitutes must be worth at least the quoted unit price)
+[TakeItOrLeaveIt] Strict dealer fulfilment: On (managed appointments never fall back to the requested product)
+[TakeItOrLeaveIt] Dealer restock messages: Active
 [TakeItOrLeaveIt] Initialization completed.
 [TakeItOrLeaveIt] Version 0.0.1-dev initialized successfully.
-[TakeItOrLeaveIt] Phase 03: player sales hooks active; dealers unchanged until Phase 04.
+[TakeItOrLeaveIt] Phase 04: player sales hooks active; dealer sales hooks active.
 [TakeItOrLeaveIt] S1API detected: the 'Take It' app is available on the in-game phone.
 [TakeItOrLeaveIt] Scene loaded: '<scene>' (index n).
 
 After loading a save, a `Product catalog: Ready` block lists the discovered products
 (see [PHASE_01_TESTING.md](PHASE_01_TESTING.md)), followed by
-`Player sales authority: Single player host.` and `Player Sales: Enabled.`
+`Player sales authority: Single player host.`, `Player Sales: Enabled.`, `Dealer sales authority: Single player host.`
+and `Dealer sales: Active.`
 
 ```
 
@@ -112,5 +122,5 @@ uninstall option or verify the game files in Steam.
 - Loading `TakeItOrLeaveIt.Core.dll` from `UserLibs` follows MelonLoader's documented layout but has not been observed yet.
   For the Mono build, Unity's Mono runtime must load a .NET Standard 2.0 library (normally supported; unverified for this game).
 - Player sales are untested in game, single player only, IL2CPP-only and only in builds made with local game
-  references (see [PLAYER_SALES.md §10](PLAYER_SALES.md#10-known-limitations)). Dealers are unchanged until Phase 04.
+  references (see [PLAYER_SALES.md §10](PLAYER_SALES.md#10-known-limitations)). Dealer sales: see [DEALER_SALES.md §7](DEALER_SALES.md#7-known-limitations); enhancements: [PHASE_04_ENHANCEMENTS.md §7](PHASE_04_ENHANCEMENTS.md#7-limitations).
 - The phone menu is IL2CPP-only and needs S1API 3.2.3; the Mono build has no menu.

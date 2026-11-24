@@ -94,8 +94,8 @@
   <Target Name="ReportPhoneApp" BeforeTargets="CoreCompile" Condition="'$(TargetFramework)' == 'net6.0'">
     <Message Importance="high" Condition="'$(PhoneAppEnabled)' == 'true'" Text="TakeItOrLeaveIt: building WITH the S1API phone app (references: $(S1RefsDir))." />
     <Message Importance="high" Condition="'$(PhoneAppEnabled)' != 'true'" Text="TakeItOrLeaveIt: building WITHOUT the phone app (set S1RefsDir in local.build.props; see docs/BUILDING.md)." />
-    <Message Importance="high" Condition="'$(GamePatchesEnabled)' == 'true'" Text="TakeItOrLeaveIt: building WITH the player-sales game hooks." />
-    <Message Importance="high" Condition="'$(GamePatchesEnabled)' != 'true'" Text="TakeItOrLeaveIt: building WITHOUT the player-sales game hooks (no local game references)." />
+    <Message Importance="high" Condition="'$(GamePatchesEnabled)' == 'true'" Text="TakeItOrLeaveIt: building WITH the player and dealer sales game hooks." />
+    <Message Importance="high" Condition="'$(GamePatchesEnabled)' != 'true'" Text="TakeItOrLeaveIt: building WITHOUT the player and dealer sales game hooks (no local game references)." />
   </Target>
 
   <!--

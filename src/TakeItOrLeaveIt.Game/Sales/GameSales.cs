@@ -69,6 +69,24 @@ internal static class GameSales
         return coordinator.Find(contractId);
     }
 
+    /// <summary>True when the contract is a managed player order or a managed dealer appointment.</summary>
+    public static bool ManagedAny(Contract? contract, out string? contractId)
+    {
+        if (Managed(contract, out contractId) is not null)
+        {
+            return true;
+        }
+
+        var dealers = GameDealers.Coordinator;
+        if (dealers is null || dealers.ActiveAppointments == 0 || contract is null)
+        {
+            return false;
+        }
+
+        contractId ??= ContractId(contract);
+        return dealers.Find(contractId) is not null;
+    }
+
     /// <summary>Contract accepted: build the Core request from the vanilla product list.</summary>
     public static OrderRequest ToRequest(Contract contract, bool isPlayerContract)
     {
@@ -101,7 +119,7 @@ internal static class GameSales
             delivered.Add(ToDelivered(i, items[i]));
         }
 
-        var validation = Coordinator?.Validate(contractId, delivered);
+        var validation = Coordinator?.Validate(contractId, delivered) ?? GameDealers.Coordinator?.Validate(contractId, delivered);
         _cacheContract = contractId;
         _cacheSignature = signature;
         _cacheValidation = validation;

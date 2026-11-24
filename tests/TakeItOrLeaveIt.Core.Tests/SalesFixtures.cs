@@ -30,6 +30,20 @@ internal static class Sales
     public static DeliveredItem Item(string slot, ProductKey product, int quantity, int unitsPerItem = 1, bool packaged = true)
         => new(slot, product.Value, quantity, unitsPerItem, packaged);
 
+    /// <summary>Every fixture product at the same unit price: any eligible product is a fair substitute.</summary>
+    public static readonly ProductPrices Flat = new(new[] { OgKush, SourDiesel, Gdp, Meth1, Coke1 }
+        .Select(p => new KeyValuePair<ProductKey, decimal>(p, 40m)));
+
+    /// <summary>Distinct prices (test data only): OG Kush 35, Sour Diesel 45, GDP 50, meth 70, cocaine 90.</summary>
+    public static readonly ProductPrices Tiered = new(new Dictionary<ProductKey, decimal>
+    {
+        [OgKush] = 35m,
+        [SourDiesel] = 45m,
+        [Gdp] = 50m,
+        [Meth1] = 70m,
+        [Coke1] = 90m,
+    });
+
     public static PolicyConfiguration Policy(Func<PolicyConfiguration, PolicyConfiguration>? change = null)
         => change is null ? PolicyConfiguration.Default : change(PolicyConfiguration.Default);
 }
@@ -88,7 +102,7 @@ internal sealed class SettlementHarness
     {
         Policies = new InMemoryPolicyProvider(policy ?? PolicyConfiguration.Default);
         Catalog = catalog ?? AllWeedUnlocked();
-        Coordinator = new PlayerSaleCoordinator(Policies, () => Catalog, Log);
+        Coordinator = new PlayerSaleCoordinator(Policies, () => Catalog, Log) { Prices = Sales.Flat };
         Coordinator.SetAuthority(isServer: true, playerCount: 1);
         Coordinator.BindSave("save-test", null);
     }
