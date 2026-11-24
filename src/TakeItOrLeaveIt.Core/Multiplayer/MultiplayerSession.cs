@@ -56,8 +56,16 @@ public sealed class NetworkReading
 /// </summary>
 public sealed class MultiplayerSession
 {
+    /// <summary>
+    /// The host rewrites its current value this often. For lobby data an unchanged write is a no-op; for any transport
+    /// that can deliver an older value last, it guarantees clients converge on the current revision.
+    /// </summary>
+    public const long HeartbeatMs = 30_000;
+
     private readonly IModLog? _log;
     private string? _hostSave;
+    private long _lastWriteAt = long.MinValue;
+    private bool _failing;
     private string? _publishedTo;
     private string? _localModVersion;
     private string? _localGameVersion;
@@ -148,7 +156,7 @@ public sealed class MultiplayerSession
         }
 
         IsClientRole |= next.State == SessionState.NetworkDisconnected;
-        Publish(reading, channel, liveRules, policyReady);
+        Publish(reading, channel, liveRules, policyReady, nowMs);
         MenuControlText = reading.IsServer == false && (reading.IsClient == true || next.State == SessionState.NetworkDisconnected)
             ? next.PlayerText
             : null;
@@ -177,7 +185,7 @@ public sealed class MultiplayerSession
         return lines;
     }
 
-    private void Publish(NetworkReading reading, IRulesChannel? channel, PolicyConfiguration? liveRules, bool policyReady)
+    private void Publish(NetworkReading reading, IRulesChannel? channel, PolicyConfiguration? liveRules, bool policyReady, long nowMs)
     {
         var canPublish = Decision.Capabilities.PublishPolicy && channel is { IsOpen: true, IsOwner: true } && reading.SaveIdentity is not null;
         if (!canPublish)
@@ -206,7 +214,8 @@ public sealed class MultiplayerSession
 
         var payload = Host.Update(policyReady ? liveRules : null, policyReady ? null : "the host's settings for this save are not loaded");
         var lobbyChanged = !string.Equals(_publishedTo, channel!.Identity, StringComparison.Ordinal);
-        var toWrite = payload ?? (lobbyChanged ? Host.Current : null);
+        var heartbeat = _lastWriteAt != long.MinValue && nowMs - _lastWriteAt >= HeartbeatMs;
+        var toWrite = payload ?? (lobbyChanged || heartbeat ? Host.Current : null);
         if (toWrite is null)
         {
             return;
@@ -215,6 +224,8 @@ public sealed class MultiplayerSession
         if (channel.Publish(toWrite))
         {
             _publishedTo = channel.Identity;
+            _lastWriteAt = nowMs;
+            _failing = false;
             if (payload is not null)
             {
                 _log?.Info($"Take It rules shared with clients (revision {Host.Revision}).");
@@ -224,7 +235,12 @@ public sealed class MultiplayerSession
         {
             PublishFailures++;
             _publishedTo = null;
-            _log?.Warning("Take It rules could not be shared with clients; they are retried on the next check.");
+            if (!_failing)
+            {
+                _log?.Warning("Take It rules could not be shared with clients; they are retried on every check (clients see \"Waiting for host rules\").");
+            }
+
+            _failing = true;
         }
     }
 

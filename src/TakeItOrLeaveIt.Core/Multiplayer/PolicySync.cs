@@ -43,8 +43,9 @@ public enum HostRulesState
 public sealed class PolicySnapshot
 {
     public PolicySnapshot(int protocol, string modVersion, string? gameVersion, string session, long revision, HostRulesState state,
-        string? reason, string? rulesJson)
+        string? reason, string? rulesJson, long epoch = 1)
     {
+        Epoch = epoch;
         Protocol = protocol;
         ModVersion = modVersion;
         GameVersion = gameVersion;
@@ -66,6 +67,12 @@ public sealed class PolicySnapshot
 
     /// <summary>Strictly increasing within a session.</summary>
     public long Revision { get; }
+
+    /// <summary>
+    /// Increases with every session the host starts (each loaded save). Tokens are random and cannot be ordered, so a
+    /// client uses the epoch to refuse a delayed value from an earlier session.
+    /// </summary>
+    public long Epoch { get; }
 
     public HostRulesState State { get; }
 
@@ -130,6 +137,7 @@ public static class PolicySyncCodec
             ["mod"] = Clip(snapshot.ModVersion),
             ["s"] = snapshot.Session,
             ["r"] = snapshot.Revision,
+            ["e"] = snapshot.Epoch,
             ["state"] = snapshot.State == HostRulesState.Ready ? "ready" : "not-ready",
         };
         if (snapshot.GameVersion is { Length: > 0 } game)
@@ -203,7 +211,8 @@ public static class PolicySyncCodec
         }
 
         if (!TryText(root, "mod", out var modVersion) || !TryText(root, "s", out var session) || !IsToken(session) ||
-            !TryInt(root, "r", out var revision) || revision < 1 || !TryText(root, "state", out var stateText))
+            !TryInt(root, "r", out var revision) || revision < 1 || !TryInt(root, "e", out var epoch) || epoch < 1 ||
+            !TryText(root, "state", out var stateText))
         {
             return Malformed("missing or invalid header fields");
         }
@@ -213,7 +222,7 @@ public static class PolicySyncCodec
         {
             var why = root.TryGetValue("why", out var w) && w is string ws ? Clip(ws) : "the host's settings are not ready";
             return new SyncDecodeResult(SyncDecodeStatus.Ok,
-                new PolicySnapshot(protocol: (int)protocol, modVersion, game, session, revision, HostRulesState.NotReady, why, null), null, why);
+                new PolicySnapshot(protocol: (int)protocol, modVersion, game, session, revision, HostRulesState.NotReady, why, null, epoch), null, why);
         }
 
         if (stateText != "ready" || !root.TryGetValue("rules", out var rawRules) || rawRules is not string rules ||
@@ -246,7 +255,7 @@ public static class PolicySyncCodec
         var configuration = PolicyConfiguration.FromSettings(settings, out var issues);
         var detail = issues.Count == 0 ? "rules received" : $"rules received; {issues.Count} entry(ies) shown made safer";
         return new SyncDecodeResult(SyncDecodeStatus.Ok,
-            new PolicySnapshot((int)protocol, modVersion, game, session, revision, HostRulesState.Ready, null, rules), configuration, detail);
+            new PolicySnapshot((int)protocol, modVersion, game, session, revision, HostRulesState.Ready, null, rules, epoch), configuration, detail);
     }
 
     /// <summary>First 16 hex digits of SHA-256 over the UTF-8 text (an integrity check, not a security measure).</summary>
@@ -345,6 +354,9 @@ public sealed class PolicySyncHost
     /// <summary>Null outside a session.</summary>
     public string? Session { get; private set; }
 
+    /// <summary>Sessions started by this host so far (the current one's epoch).</summary>
+    public long Epoch { get; private set; }
+
     public long Revision { get; private set; }
 
     /// <summary>The payload currently published (null when nothing is).</summary>
@@ -365,6 +377,7 @@ public sealed class PolicySyncHost
         }
 
         Session = token;
+        Epoch++;
         Revision = 0;
         _lastContent = null;
         Current = null;
@@ -400,14 +413,14 @@ public sealed class PolicySyncHost
 
         var snapshot = new PolicySnapshot(PolicySyncProtocol.Version, _modVersion, _gameVersion, Session, Revision + 1,
             rulesText is null ? HostRulesState.NotReady : HostRulesState.Ready,
-            rulesText is null ? notReadyReason ?? "the host's settings are not ready" : null, rulesText);
+            rulesText is null ? notReadyReason ?? "the host's settings are not ready" : null, rulesText, Epoch);
         var payload = PolicySyncCodec.Encode(snapshot);
         if (Encoding.UTF8.GetByteCount(payload) > PolicySyncProtocol.MaxPayloadBytes)
         {
             // Never publish a truncated rule set: clients are told the rules are too large to show.
             LastProblem = "the rules are too large to share with clients; clients see \"Waiting for host rules\"";
             snapshot = new PolicySnapshot(PolicySyncProtocol.Version, _modVersion, _gameVersion, Session, Revision + 1,
-                HostRulesState.NotReady, "the host's rules are too large to share", null);
+                HostRulesState.NotReady, "the host's rules are too large to share", null, Epoch);
             payload = PolicySyncCodec.Encode(snapshot);
         }
         else
@@ -479,6 +492,9 @@ public sealed class PolicySyncClient
     public string? Session { get; private set; }
 
     public long Revision { get; private set; }
+
+    /// <summary>Epoch of the accepted session (0 before any).</summary>
+    public long Epoch { get; private set; }
 
     public string? HostModVersion { get; private set; }
 
@@ -610,8 +626,23 @@ public sealed class PolicySyncClient
             return SyncObservation.Stale;
         }
 
+        if (Session is null && snapshot.Epoch < Epoch)
+        {
+            // After the host cleared its value: a delayed value from an older session is still refused.
+            Stale++;
+            return SyncObservation.Stale;
+        }
+
         if (Session is not null && !string.Equals(Session, snapshot.Session, StringComparison.Ordinal))
         {
+            if (snapshot.Epoch <= Epoch)
+            {
+                // A delayed value from an earlier (or the same-numbered) host session: never replaces the current one.
+                Stale++;
+                Handshake = HostRules is null ? SyncHandshake.SnapshotRequested : SyncHandshake.Ready;
+                return SyncObservation.Stale;
+            }
+
             Retire(Session);
         }
 
@@ -619,6 +650,7 @@ public sealed class PolicySyncClient
         _lastRaw = payload;
         Session = snapshot.Session;
         Revision = snapshot.Revision;
+        Epoch = snapshot.Epoch;
         HostModVersion = snapshot.ModVersion;
         HostGameVersion = snapshot.GameVersion;
         Accepted++;
@@ -679,6 +711,7 @@ public sealed class PolicySyncClient
         HostRules = null;
         Session = null;
         Revision = 0;
+        Epoch = 0;
         HostModVersion = null;
         HostGameVersion = null;
         _lastRaw = null;

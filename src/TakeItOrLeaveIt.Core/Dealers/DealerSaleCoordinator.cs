@@ -497,7 +497,9 @@ public sealed class DealerSaleCoordinator
     /// </summary>
     public HandoverCompletion CompleteHandover(string? contractId, long removedUnits)
     {
-        if (contractId is null || !_appointments.TryGetValue(contractId, out var appointment) || appointment.State != AppointmentState.Committing)
+        // Phase 07: a completed removal is final; a repeated completion for the same commit is ignored (no second release).
+        if (contractId is null || !_appointments.TryGetValue(contractId, out var appointment) || appointment.State != AppointmentState.Committing ||
+            appointment.RemovedUnits > 0)
         {
             return HandoverCompletion.Ignored;
         }
@@ -529,7 +531,8 @@ public sealed class DealerSaleCoordinator
     public HandoverCompletion CompleteHandover(string? contractId, IReadOnlyList<RemovedLot>? removed, out int lotMismatches)
     {
         lotMismatches = 0;
-        if (contractId is null || !_appointments.TryGetValue(contractId, out var appointment) || appointment.State != AppointmentState.Committing)
+        if (contractId is null || !_appointments.TryGetValue(contractId, out var appointment) || appointment.State != AppointmentState.Committing ||
+            appointment.RemovedUnits > 0)
         {
             return HandoverCompletion.Ignored;
         }
