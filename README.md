@@ -109,6 +109,7 @@ See [docs/BUILDING.md](docs/BUILDING.md) (output locations, optional auto-deploy
 | [docs/PHASE_05_ANALYSIS.md](docs/PHASE_05_ANALYSIS.md) | Phase 05 game data evidence, rule precedence, schema 2 and migration |
 | [docs/PHASE_05_TESTING.md](docs/PHASE_05_TESTING.md) | Phase 05 in-game scenarios (17 areas), all NOT TESTED |
 | [docs/PHASE_06_ANALYSIS.md](docs/PHASE_06_ANALYSIS.md) | Phase 06 persistence audit, safe writes, recovery and compatibility rules, Phase 08 assumptions |
+| [docs/PHASE_06_TESTING.md](docs/PHASE_06_TESTING.md) | Phase 06 in-game scenarios for Phase 08, all NOT TESTED |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Project boundaries, adapter design, eligibility engine, S1API evaluation |
 | [docs/BUILDING.md](docs/BUILDING.md) | Build, test, package, local deploy |
 | [docs/INSTALLATION.md](docs/INSTALLATION.md) | Installing and verifying the development DLL |

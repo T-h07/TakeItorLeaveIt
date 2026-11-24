@@ -137,6 +137,21 @@ which older readers ignore, so no version bump is justified.
 - Active dealer appointments keep their acceptance-time snapshot; restock messages use `ForScope(Dealer(id))` of the
   current rules (Phase 05, unchanged).
 
+### 8a. Dealer appointments, reservations and messages after a reload
+
+- Appointments are stored with their snapshot (including the Phase 05 quality minimum, which already is the stricter
+  of the rule and the customer's requirement), dealer id, acceptance order and whether the game processed the
+  handover. Reservations are never stored: `BindSave` clears the ledger and the next `Reconcile` with the dealer's
+  live inventory rebuilds them per quality lot, oldest appointment first (P04_T42, P06_H01).
+- A handover the game already processed (`committed`) is restored as `CommitObserved`: it reserves nothing, a second
+  handover gives nothing and a second processing report is a duplicate (P06_H02, P06_H03).
+- `Committing` (between the planned removal and its completion) exists only inside one game call and is never
+  persisted (writes happen at most once per frame from `Tick`); a reload therefore never resumes half a handover.
+- Callbacks carrying contract ids of the previous save find nothing after `BindSave` and do nothing (P06_H04).
+- Message dedup state (`outOfStockSent`, shortage high-water marks) is stored per save, recovered from a verified
+  backup if damaged, and re-armed only by a real restock (P06_H05, P06_C08). `Report` ignores alerts whose save id is
+  not the bound save.
+
 ## 9. Save identity notes and assumptions for Phase 08
 
 - **Collisions:** 48 bits of SHA-256; the chance that two of n saves collide is about n²/2⁴⁹ (≈ 10⁻¹² for 20 saves).
@@ -157,7 +172,7 @@ To confirm in Phase 08 (cannot be verified without the game):
    (the mod's runtime files are written continuously, the game's save only when the player saves).
 6. Dealer `ID` values are unique and stable per save.
 
-## 10. Tests added (58; total 601)
+## 10. Tests added (69; total 612)
 
 | Suite | Covers |
 | --- | --- |
@@ -168,3 +183,6 @@ To confirm in Phase 08 (cannot be verified without the game):
 | E `SaveProfileIsolationTests` | per-save rules across switches and restart, no cross-save permission, catalog failure never rewrites, undiscovered selection kept and reactivated, dealer overrides per save and dealer |
 | F `ContractRecoveryTests` | accepted order keeps OG Kush after "GDP only" + reload while new orders are GDP only; unreadable snapshot not rebuilt |
 | G `SaveIdentityTests` | deterministic anonymised identity, unsafe tokens rejected, no identity → nothing loaded or written |
+| H `PersistenceRecoveryTests` | reloaded dealer appointment reserves only lots meeting its saved minimum; committed dealer/player handovers never repeated after reload; callbacks of the previous save are no-ops; out-of-stock text not repeated after a restart (and re-armed by a restock); reset keeps every backup; randomised fault injection (5 seeds × 400 steps: write/replace/read-back failures, on-disk damage, save switches) — after every step each file is absent or one complete document of its own save, `.bak` always valid, at most 3 corrupt copies; after the faults stop the last write of every save is on disk |
+
+In-game scenarios for Phase 08: [PHASE_06_TESTING.md](PHASE_06_TESTING.md) (all NOT TESTED).
