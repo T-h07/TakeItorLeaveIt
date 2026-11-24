@@ -47,6 +47,8 @@ public sealed class ModMenuController : IDisposable
     private string _savedFingerprint = Fingerprint(PolicyConfiguration.Default);
     private bool _settingsLoaded;
     private bool _settingsUnreadable;
+    private bool _settingsNewer;
+    private string _settingsFileState = "not loaded";
     private bool _disposed;
 
     private CategoryKey _category;
@@ -114,6 +116,15 @@ public sealed class ModMenuController : IDisposable
     /// then stay vanilla instead of silently using defaults.
     /// </summary>
     public bool PolicyReadyForSales => _settingsLoaded && !_settingsUnreadable;
+
+    /// <summary>
+    /// Phase 06: the active save's settings file was written by a newer build. It is never overwritten or downgraded,
+    /// so saving is refused and mod sales stay off.
+    /// </summary>
+    public bool SettingsFromNewerVersion => _settingsNewer;
+
+    /// <summary>Phase 06: one line describing the settings file of the active save (Diagnostics).</summary>
+    public string SettingsFileState => _settingsFileState;
 
     public string AvailabilityText => Availability switch
     {
@@ -550,6 +561,12 @@ public sealed class ModMenuController : IDisposable
             return false;
         }
 
+        if (_settingsNewer)
+        {
+            SetFeedback(FeedbackKind.Error, "Not saved: this save's settings were written by a newer version of the mod and are kept unchanged.");
+            return false;
+        }
+
         var settings = _draft.ToSettings();
         var validated = PolicyConfiguration.FromSettings(settings, out var issues);
         if (issues.Count > 0)
@@ -570,6 +587,7 @@ public sealed class ModMenuController : IDisposable
         }
 
         _settingsUnreadable = false;
+        _settingsFileState = "saved";
 
         ApplySaved(validated);
         _draft = _saved;
@@ -698,6 +716,8 @@ public sealed class ModMenuController : IDisposable
         IsResetPending = false;
         _settingsLoaded = false;
         _settingsUnreadable = false;
+        _settingsNewer = false;
+        _settingsFileState = session.IsNone ? "no save loaded" : "not loaded";
 
         if (session.IsNone)
         {
@@ -707,6 +727,7 @@ public sealed class ModMenuController : IDisposable
         }
 
         PolicyConfiguration loaded;
+        PolicyConfiguration? recovered = null;
         var result = SafeLoad(session.SaveIdentity);
         switch (result.Status)
         {
@@ -717,25 +738,53 @@ public sealed class ModMenuController : IDisposable
                     _log?.Warning($"Menu settings for {session.SaveIdentity}: {issue}");
                 }
 
+                if (result.Settings is { UnknownFields.Count: > 0 } withUnknown)
+                {
+                    _log?.Warning($"Menu settings for {session.SaveIdentity} contain fields this version does not know ({string.Join(", ", withUnknown.UnknownFields.Take(10))}); " +
+                                  "they are not kept when the settings are next saved (the previous file is kept as .bak).");
+                }
+
                 if (issues.Count > 0)
                 {
                     Feedback = new MenuFeedback(FeedbackKind.Warning, $"{issues.Count} setting(s) were invalid and were ignored or made safer. See the log.");
                 }
 
+                _settingsFileState = issues.Count > 0 ? $"loaded with {issues.Count} issue(s) (made safer)" : "loaded";
                 break;
-            case PolicyLoadStatus.Unreadable:
-                _log?.Warning($"Menu settings for {session.SaveIdentity} are unreadable; defaults are shown and the file is kept. {result.Message}");
-                Feedback = new MenuFeedback(FeedbackKind.Warning, "Saved settings could not be read; defaults are shown. The file is kept until you save.");
+            case PolicyLoadStatus.NewerSchema:
+                _log?.Warning($"Menu settings for {session.SaveIdentity}: {result.Message}");
+                Feedback = new MenuFeedback(FeedbackKind.Warning, "These settings were saved by a newer version of the mod. They are kept unchanged; mod sales are off and saving is disabled.");
                 loaded = PolicyConfiguration.Default;
                 _settingsUnreadable = true;
+                _settingsNewer = true;
+                _settingsFileState = "written by a newer version (kept unchanged; mod sales off)";
+                break;
+            case PolicyLoadStatus.Unreadable:
+                _log?.Warning($"Menu settings for {session.SaveIdentity} are unreadable; the file is kept and mod sales stay off. {result.Message} {result.RecoveryNote}");
+                loaded = PolicyConfiguration.Default;
+                _settingsUnreadable = true;
+                if (result.Recovery is not null)
+                {
+                    recovered = PolicyConfiguration.FromSettings(result.Recovery, out _);
+                    Feedback = new MenuFeedback(FeedbackKind.Warning,
+                        "Saved settings are damaged (the file is kept). Your last good settings were found in the backup and are shown as unsaved changes: review them and press Save to restore them, or Discard. Mod sales stay off until then.");
+                    _settingsFileState = "damaged; verified backup offered as unsaved changes (mod sales off until saved)";
+                }
+                else
+                {
+                    Feedback = new MenuFeedback(FeedbackKind.Warning, "Saved settings could not be read; defaults are shown and mod sales stay off. The file is kept; saving replaces it (a copy is kept).");
+                    _settingsFileState = "damaged, no verified backup (mod sales off until saved)";
+                }
+
                 break;
             default:
                 loaded = PolicyConfiguration.Default;
+                _settingsFileState = "none yet (defaults)";
                 break;
         }
 
         ApplySaved(loaded);
-        _draft = _saved;
+        _draft = recovered ?? _saved;
         _settingsLoaded = true;
     }
 
