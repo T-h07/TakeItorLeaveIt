@@ -20,8 +20,8 @@
     <Authors>T-h07</Authors>
     <Product>TakeItOrLeaveIt</Product>
     <!-- Single source of truth for the mod version. ModInfo.Version must match (checked by a unit test). -->
-    <Version>0.0.1</Version>
-    <InformationalVersion>0.0.1-dev</InformationalVersion>
+    <Version>1.0.0</Version>
+    <InformationalVersion>1.0.0-rc.1</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 </Project>

@@ -13,13 +13,13 @@ public static class ModInfo
     public const string Author = "T-h07";
 
     /// <summary>
-    /// Development version. Must equal the <c>InformationalVersion</c> in Directory.Build.props
+    /// Mod version (release candidates carry an -rc.N suffix). Must equal the <c>InformationalVersion</c> in Directory.Build.props
     /// (enforced by a unit test).
     /// </summary>
-    public const string Version = "0.0.1-dev";
+    public const string Version = "1.0.0-rc.1";
 
     /// <summary>Current development phase, reported in diagnostics.</summary>
-    public const string Phase = "07 - Multiplayer";
+    public const string Phase = "08 - Release stabilization";
 
     /// <summary>Message logged once initialization completes successfully.</summary>
     public static string InitializedMessage => $"Version {Version} initialized successfully.";
