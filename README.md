@@ -108,6 +108,7 @@ See [docs/BUILDING.md](docs/BUILDING.md) (output locations, optional auto-deploy
 | [docs/ADVANCED_RULES.md](docs/ADVANCED_RULES.md) | Phase 05 player guide: lists, lineage, quality, effects, mixing, switches, overrides, presets |
 | [docs/PHASE_05_ANALYSIS.md](docs/PHASE_05_ANALYSIS.md) | Phase 05 game data evidence, rule precedence, schema 2 and migration |
 | [docs/PHASE_05_TESTING.md](docs/PHASE_05_TESTING.md) | Phase 05 in-game scenarios (17 areas), all NOT TESTED |
+| [docs/PHASE_06_ANALYSIS.md](docs/PHASE_06_ANALYSIS.md) | Phase 06 persistence audit, safe writes, recovery and compatibility rules, Phase 08 assumptions |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Project boundaries, adapter design, eligibility engine, S1API evaluation |
 | [docs/BUILDING.md](docs/BUILDING.md) | Build, test, package, local deploy |
 | [docs/INSTALLATION.md](docs/INSTALLATION.md) | Installing and verifying the development DLL |
@@ -116,7 +117,8 @@ See [docs/BUILDING.md](docs/BUILDING.md) (output locations, optional auto-deploy
 
 - Player and dealer sales are untested in game, single player only, and exist only in the IL2CPP build made with local game references (not in the CI artifact, not in the Mono build). The customer's phone message names the game's chosen product, which is now always a permitted one; the handover screen shows the real requirement.
 - A dealer short of permitted stock still goes to the customer and hands over nothing; what the customer then does is the game's own behaviour (PROBABLE until tested).
-- Dealers accept contracts with the game's own stock check. Phase 05 rules are untested in game; the dealer list for overrides fills as dealers update in the session; whether the offer hook's dealer argument identifies the dealer is PROBABLE. Settings backup/restore polish is Phase 06.
+- Dealers accept contracts with the game's own stock check. Phase 05 rules are untested in game; the dealer list for overrides fills as dealers update in the session; whether the offer hook's dealer argument identifies the dealer is PROBABLE.
+- Phase 06 save-data handling (per-save profiles, safe writes, backups and recovery) is verified by automated tests only; in-game confirmation is scheduled for Phase 08.
 - The phone menu is IL2CPP-only, needs S1API, and is not in the CI artifact; its layout fix awaits an in-game retest.
 - The customer and dealer hooks are verified against the installed build's call graph ([PHASE_03_PATCH_ANALYSIS.md](docs/PHASE_03_PATCH_ANALYSIS.md), [PHASE_04_PATCH_ANALYSIS.md](docs/PHASE_04_PATCH_ANALYSIS.md)); the behaviour marked PROBABLE there is what the in-game tests confirm.
 
