@@ -46,7 +46,7 @@ jobs:
       - name: Upload mod package
         uses: actions/upload-artifact@v4
         with:
-          name: TakeItOrLeaveIt-${{ github.sha }}
+          name: TakeItOrLeaveIt-CI-no-game-hooks-${{ github.sha }}
           path: artifacts/package
           if-no-files-found: error
 
