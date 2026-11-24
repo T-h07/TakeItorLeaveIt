@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using TakeItOrLeaveIt.Core.Dealers;
 using TakeItOrLeaveIt.Core.Diagnostics;
 using TakeItOrLeaveIt.Core.Discovery;
 using TakeItOrLeaveIt.Core.Menu;
+using TakeItOrLeaveIt.Core.Persistence;
 using TakeItOrLeaveIt.Core.Policies;
 using TakeItOrLeaveIt.Core.Sales;
 
@@ -13,22 +15,26 @@ namespace TakeItOrLeaveIt.Game;
 
 /// <summary>
 /// Owns the sales coordinators for the running game: player sales (Phase 03) and hired-dealer sales (Phase 04).
-/// Binds both to the active save (loading that save's snapshots), writes them off the main thread when they
-/// change, and builds the status report. Compiled in every build; the game hooks themselves exist only in
-/// builds with local game references.
+/// Binds them to the active save session (loading that save's snapshots), serialises them on the main thread when
+/// they change and hands the text to <see cref="SalesPersistence"/> (ordered, coalescing writes on one background
+/// runner; Phase 06), and builds the status report. Compiled in every build; the game hooks themselves exist only
+/// in builds with local game references.
 /// </summary>
 internal sealed class PlayerSalesHost
 {
     private readonly IModLog _log;
     private readonly ProductCatalogService _catalog;
-    private readonly ActiveOrderStore _store;
-    private readonly DealerOrderStore _dealerStore;
-    private readonly DealerAlertStore _alertStore;
+    /// <summary>How long a save switch may wait for pending writes (main thread, loading screen).</summary>
+    private const int SwitchFlushMs = 2_000;
+
+    /// <summary>How long quitting may wait for pending writes.</summary>
+    private const int ShutdownFlushMs = 3_000;
+
+    private readonly SalesPersistence _files;
     private bool _offersActive;
     private bool _messagingActive;
-    private readonly object _writeGate = new();
-    private Task _lastWrite = Task.CompletedTask;
-    private long _writeSequence;
+    private int _runnerActive;
+    private long _sessionId;
     private long _nextStatusRefresh;
     private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
 
@@ -36,9 +42,7 @@ internal sealed class PlayerSalesHost
     {
         _log = log;
         _catalog = catalog;
-        _store = new ActiveOrderStore(root);
-        _dealerStore = new DealerOrderStore(root);
-        _alertStore = new DealerAlertStore(root);
+        _files = new SalesPersistence(root);
         Menu = menu;
         Coordinator = new PlayerSaleCoordinator(policies, () => _catalog.State.Snapshot, log)
         {
@@ -78,6 +82,9 @@ internal sealed class PlayerSalesHost
 
     private Func<ModMenuController?> Menu { get; }
 
+    /// <summary>Called on the main thread whenever a different save session is bound (game-side caches are reset).</summary>
+    public Action? SessionChanged { get; set; }
+
     /// <summary>Called by the mod after patch registration.</summary>
     public void SetHooks(bool applied, bool dealersApplied, bool offersApplied, bool messagingAvailable, string? unavailableReason)
     {
@@ -105,7 +112,7 @@ internal sealed class PlayerSalesHost
     public IReadOnlyList<string> StatusLines()
     {
         RefreshStatus();
-        return Status.Lines().Concat(DealerStatus.Lines()).Concat(EnhancementLines()).ToList();
+        return Status.Lines().Concat(DealerStatus.Lines()).Concat(EnhancementLines()).Concat(_files.StatusLines()).ToList();
     }
 
     /// <summary>Offer filter, fair pricing, strict dealer fulfilment and restock messages.</summary>
@@ -134,8 +141,15 @@ internal sealed class PlayerSalesHost
     {
         if (Coordinator.HasUnsavedOrders || Dealers.HasUnsavedChanges || Notifier.HasUnsavedChanges)
         {
-            Persist(synchronous: false);
+            Persist();
         }
+
+        if (_files.Queue.HasDue)
+        {
+            StartRunner();
+        }
+
+        LogQueueMessages();
 
         var now = _clock.ElapsedMilliseconds;
         if (now >= _nextStatusRefresh)
@@ -158,30 +172,70 @@ internal sealed class PlayerSalesHost
         }
     }
 
+    /// <summary>Queues the last state and waits (bounded) for every pending write. Never throws.</summary>
     public void Shutdown()
     {
         _catalog.StateChanged -= OnCatalogState;
-        Persist(synchronous: true);
+        try
+        {
+            Persist();
+            if (!_files.Queue.Flush(ShutdownFlushMs))
+            {
+                _log.Warning($"{_files.Queue.PendingCount} runtime file write(s) could not be completed before quitting; the previous files are intact.");
+            }
+
+            LogQueueMessages();
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Writing runtime files at shutdown failed; the previous files are intact.", ex);
+        }
     }
 
     private void OnCatalogState(CatalogState state)
     {
-        var identity = state.Session.IsNone ? null : state.Session.SaveIdentity;
-        if (string.Equals(identity, Coordinator.SaveIdentity, StringComparison.Ordinal))
+        var sessionId = state.Session.IsNone ? 0 : state.Session.Id;
+        if (sessionId == _sessionId)
         {
             return;
         }
 
-        Persist(synchronous: true);
-        IEnumerable<(CategoryOrder, SaleState)>? orders = null;
-        IEnumerable<DealerOrderRecord>? appointments = null;
-        if (identity is not null)
+        _sessionId = sessionId;
+        var identity = state.Session.IsNone ? null : state.Session.SaveIdentity;
+        var previous = Coordinator.SaveIdentity;
+
+        // 1. Finish the outgoing save: queue its last state and write it before anything of the next save is read.
+        Persist();
+        if (!_files.Queue.Flush(SwitchFlushMs))
         {
-            var loaded = SafeLoad(identity);
-            orders = loaded.Orders;
+            _log.Warning("Some runtime file writes of the previous save are still pending; they are retried in the background and only ever go to that save's own files.");
+        }
+
+        LogQueueMessages();
+        try
+        {
+            SessionChanged?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Resetting game-side caches for the new save failed.", ex);
+        }
+
+        // 2. Same save again (reload) while its files could not be written: keep the newer in-memory state.
+        if (identity is not null && string.Equals(identity, previous, StringComparison.Ordinal) && _files.HasPending(identity))
+        {
+            _log.Warning($"Runtime files for {identity} still have unwritten changes; the in-memory state is kept instead of re-reading older files.");
+            RefreshStatus();
+            return;
+        }
+
+        // 3. Bind the new save (or none). Old references are dropped by BindSave.
+        var loaded = _files.Bind(identity);
+        if (loaded is not null)
+        {
             foreach (var issue in loaded.Issues)
             {
-                _log.Warning($"Active orders for {identity}: {issue}");
+                _log.Warning($"Save {identity}: {issue}");
             }
 
             if (loaded.Orders.Count > 0)
@@ -189,76 +243,23 @@ internal sealed class PlayerSalesHost
                 _log.Info($"Restored {loaded.Orders.Count} active category order(s) for {identity}.");
             }
 
-            var dealerLoaded = SafeLoadDealers(identity);
-            appointments = dealerLoaded.Records;
-            foreach (var issue in dealerLoaded.Issues)
+            if (loaded.Appointments.Count > 0)
             {
-                _log.Warning($"Dealer appointments for {identity}: {issue}");
-            }
-
-            if (dealerLoaded.Records.Count > 0)
-            {
-                _log.Info($"Restored {dealerLoaded.Records.Count} dealer appointment(s) for {identity}; reservations are rebuilt from the dealers' inventory.");
+                _log.Info($"Restored {loaded.Appointments.Count} dealer appointment(s) for {identity}; reservations are rebuilt from the dealers' inventory.");
             }
         }
 
-        DealerAlertState? alerts = null;
-        if (identity is not null)
-        {
-            var issues = new List<string>();
-            alerts = SafeLoadAlerts(identity, issues);
-            foreach (var issue in issues)
-            {
-                _log.Warning($"Dealer messages for {identity}: {issue}");
-            }
-        }
-
-        Coordinator.BindSave(identity, orders);
-        Dealers.BindSave(identity, appointments);
-        Notifier.BindSave(identity, alerts);
+        Coordinator.BindSave(identity, loaded?.Orders);
+        Dealers.BindSave(identity, loaded?.Appointments);
+        Notifier.BindSave(identity, loaded?.Alerts);
         RefreshStatus();
     }
 
-    private OrdersLoadResult SafeLoad(string identity)
-    {
-        try
-        {
-            return _store.Load(identity);
-        }
-        catch (Exception ex)
-        {
-            _log.Error("Loading active orders failed; they use vanilla rules.", ex);
-            return new OrdersLoadResult(OrdersLoadStatus.Unreadable, Array.Empty<(CategoryOrder, SaleState)>(), Array.Empty<string>());
-        }
-    }
-
-    private DealerOrdersLoadResult SafeLoadDealers(string identity)
-    {
-        try
-        {
-            return _dealerStore.Load(identity);
-        }
-        catch (Exception ex)
-        {
-            _log.Error("Loading dealer appointments failed; they use vanilla rules.", ex);
-            return new DealerOrdersLoadResult(OrdersLoadStatus.Unreadable, Array.Empty<DealerOrderRecord>(), Array.Empty<string>());
-        }
-    }
-
-    private DealerAlertState? SafeLoadAlerts(string identity, ICollection<string> issues)
-    {
-        try
-        {
-            return _alertStore.Load(identity, issues);
-        }
-        catch (Exception ex)
-        {
-            _log.Error("Loading dealer message history failed; starting without it.", ex);
-            return null;
-        }
-    }
-
-    private void Persist(bool synchronous)
+    /// <summary>
+    /// Serialises the changed books on the main thread (they are not thread-safe) and queues them for the bound save.
+    /// Each queued document stays in the queue until written, so marking the books persisted here never loses a change.
+    /// </summary>
+    private void Persist()
     {
         var identity = Coordinator.SaveIdentity;
         if (identity is null || (!Coordinator.HasUnsavedOrders && !Dealers.HasUnsavedChanges && !Notifier.HasUnsavedChanges))
@@ -266,66 +267,63 @@ internal sealed class PlayerSalesHost
             return;
         }
 
-        // Serialise both files on the main thread (the books are not thread-safe) and write them on a worker.
-        // Both are always written together, so skipping an older queued write ("newest wins") never loses one.
-        var orders = ActiveOrderStore.ToJson(Coordinator.Book.Orders);
-        Coordinator.MarkPersisted();
-        string? appointments = null;
-        if (string.Equals(Dealers.SaveIdentity, identity, StringComparison.Ordinal))
+        string? orders = null;
+        if (Coordinator.HasUnsavedOrders)
         {
-            appointments = DealerOrderStore.ToJson(Dealers.Records());
+            orders = ActiveOrderStore.ToJson(Coordinator.Book.Orders, identity);
+            Coordinator.MarkPersisted();
+        }
+
+        string? appointments = null;
+        if (Dealers.HasUnsavedChanges && string.Equals(Dealers.SaveIdentity, identity, StringComparison.Ordinal))
+        {
+            appointments = DealerOrderStore.ToJson(Dealers.Records(), identity);
             Dealers.MarkPersisted();
         }
 
         string? alerts = null;
-        if (string.Equals(Notifier.SaveIdentity, identity, StringComparison.Ordinal))
+        if (Notifier.HasUnsavedChanges && string.Equals(Notifier.SaveIdentity, identity, StringComparison.Ordinal))
         {
-            alerts = Notifier.State.ToJson();
+            alerts = Notifier.State.ToJson(identity);
             Notifier.MarkPersisted();
         }
 
-        long sequence;
-        lock (_writeGate)
+        if (_files.Submit(identity, orders, appointments, alerts) > 0)
         {
-            sequence = ++_writeSequence;
+            StartRunner();
+        }
+    }
+
+    /// <summary>Starts one background runner unless one is active. The runner only writes text to files.</summary>
+    private void StartRunner()
+    {
+        if (Interlocked.CompareExchange(ref _runnerActive, 1, 0) != 0)
+        {
+            return;
         }
 
-        void Write()
+        Task.Run(() =>
         {
-            lock (_writeGate)
+            try
             {
-                if (sequence != _writeSequence && !synchronous)
-                {
-                    return; // a newer snapshot is queued
-                }
-
-                try
-                {
-                    _store.SaveText(identity, orders);
-                    if (appointments is not null)
-                    {
-                        _dealerStore.SaveText(identity, appointments);
-                    }
-
-                    if (alerts is not null)
-                    {
-                        _alertStore.SaveText(identity, alerts);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _log.Warning($"Could not write active orders for {identity} ({ex.GetType().Name}: {ex.Message}). They stay in memory and are retried on the next change.");
-                }
+                _files.Queue.RunPending();
             }
-        }
+            catch (Exception)
+            {
+                // RunPending reports write errors itself; nothing else can throw here
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _runnerActive, 0);
+            }
+        });
+    }
 
-        if (synchronous)
+    private void LogQueueMessages()
+    {
+        foreach (var message in _files.Queue.DrainMessages())
         {
-            Write();
-        }
-        else
-        {
-            _lastWrite = _lastWrite.ContinueWith(_ => Write(), TaskScheduler.Default);
+            _log.Warning("Runtime files: " + message);
         }
     }
 

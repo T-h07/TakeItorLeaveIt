@@ -578,6 +578,10 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
             }
         }
 
+        Heading(c, "Save data (Phase 06)");
+        Line(c, $"Profile: {menu.ActiveSaveLabel ?? "none"}; settings file {menu.SettingsFileState}",
+            menu.PolicyReadyForSales || menu.ActiveSaveLabel is null ? Theme.TextMuted : Theme.Warning, Theme.SmallSize);
+
         Heading(c, "Player and dealer sales");
         foreach (var line in menu.SalesStatus?.Invoke() ?? new[] { "Player Sales: status unavailable" })
         {

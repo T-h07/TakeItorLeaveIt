@@ -180,7 +180,16 @@ public sealed class TakeItOrLeaveItMod : MelonMod
 
     public override void OnDeinitializeMelon()
     {
-        _patches?.RemoveAll();
+        // Each step is guarded so a failure (e.g. unpatching) never skips writing the runtime files.
+        try
+        {
+            _patches?.RemoveAll();
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Removing game patches at shutdown failed.", ex);
+        }
+
 #if GAME_PATCHES
         Sales.PlayerSalesPatches.MarkRemoved();
         Sales.DealerSalesPatches.MarkRemoved();
@@ -193,7 +202,15 @@ public sealed class TakeItOrLeaveItMod : MelonMod
 #endif
         _sales?.Shutdown();
         _sales = null;
-        _menu?.Dispose();
+        try
+        {
+            _menu?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Closing the mod menu at shutdown failed.", ex);
+        }
+
         _menu = null;
         Menu = null;
         _discovery = null;
@@ -231,6 +248,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
         Sales.SalesSession.Catalog = () => _discovery.Catalog.State.Snapshot;
         Sales.GameDealers.Coordinator = _sales.Dealers;
         Sales.GameDealers.Notifier = _sales.Notifier;
+        _sales.SessionChanged = Sales.GameDealers.Reset; // dealer ids, seen dealers and timers belong to one save session
         _menu.Dealers = Sales.GameDealers.SeenDealers;
         Sales.OfferPatches.Filter = _sales.Offers;
         _sales.Coordinator.Prices = Sales.GamePrices.Source;
