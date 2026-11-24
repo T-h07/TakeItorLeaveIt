@@ -19,10 +19,11 @@ Status values: **PASS / FAIL / BLOCKED / NOT TESTED**. BLOCKED needs a reason an
 | RC | Source commit | `Mods/TakeItOrLeaveIt.Il2Cpp.dll` SHA256 | `UserLibs/TakeItOrLeaveIt.Core.dll` SHA256 | ZIP | ZIP SHA256 | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | **1.0.0-rc.1** | `843bb1a5c37a1de78f72f6ba85458bc67bc8383e` | `FF80C72C39F49C2663D6BCC815504F48FA3AFAB0675C8DE0D4F7FD8851B08C79` (125,952 B) | `8794B5E7D95F7964B2A0A57A3CDF2F5237F73694E774DA2D4FF2BC5CC43A7AAF` (302,592 B) | `artifacts/TakeItOrLeaveIt-1.0.0-rc.1-Il2Cpp.zip` (180,230 B) | `FAD92883E4D283EE1C4057152D2B8D2ACB707D6AC6534AE8B2541DABD40B5F02` | Superseded by rc.2 (no results reported on rc.1; its DLLs contain a build path, B-19: do not share) |
-| **1.0.0-rc.2** | `0c3228b6fb5ccbf6b39f8ab55e0bfeea185ccbb5` (Phase 08 hardening, B-16 … B-21) | `055046CCA96664D722DDDD621FB2EA5BF676C3A599705AC5D90EC432BFE73D8A` (130,048 B) | `7F0B3F7EAA13BBD03DAA68A6FEB9CB208DF3AEB2F9D274CF027C28CAE061B7CB` (309,760 B) | `artifacts/TakeItOrLeaveIt-1.0.0-rc.2-Il2Cpp.zip` (185,146 B) | `E0DEEAE18F4751858D76D4D3A1A213088536C068C94C4B50644397806A765F37` | In test (Batch 01) |
+| **1.0.0-rc.2** | `0068d86df8ede828c11ab20e891c861167b3ad05` (Phase 08 hardening, B-16 … B-21; version set in `0c3228b`) | `EFD3C1353C69A6522116DCA565A3E3EA1D62476DADDD1311981F5B648F994228` (130,048 B) | `FC99196E5DD5884EB23140B961CAB45A69158794BE49EA04B1D146AFE8BCD9B8` (309,760 B) | `artifacts/TakeItOrLeaveIt-1.0.0-rc.2-Il2Cpp.zip` (185,147 B) | `5BA8100B33F63131F7AAD316884110C33AE56D4E6CF3F86CD3E9B3D519DAB7F1` | In test (Batch 01) |
 
-Build command (development PC, from a clean checkout of the source commit, `local.build.props` pointing at the local
-reference export):
+Build command (development PC, from a **clean checkout** of the source commit, `local.build.props` pointing at the local
+reference export). A clean checkout matters: Git's line-ending conversion is part of the input, because source checksums
+end up in the DLL's debug record. Two clean builds of rc.2 gave identical DLL hashes; the ZIP hash differs per packing.
 
 ```powershell
 dotnet build TakeItOrLeaveIt.sln -c Release --no-incremental

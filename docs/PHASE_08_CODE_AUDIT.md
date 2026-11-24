@@ -175,6 +175,7 @@ No refactor without a defect: the changes above are fixes. `PolicyStore` parses 
 | `b737605` fix(persistence): cap document size and never widen a damaged order flag | A-10, A-11 |
 | `35b13e5` fix(sales): fail closed for held contracts and keep items a rollback could not return | A-01 … A-06, A-12, A-13 |
 | `29c165e` test: synthetic performance suite W and PERFORMANCE.md | H09 |
-| `0c3228b` build: version 1.0.0-rc.2 | RC source commit |
+| `0c3228b` build: version 1.0.0-rc.2 | Version |
+| `0068d86` fix(dealers): restore the original unit count in the removal loop | Undoes an unintended edit in `35b13e5` (same value); **rc.2 source commit** |
 
 Blocker entries: B-16 … B-21 in [PHASE_08_RELEASE_BLOCKERS.md](PHASE_08_RELEASE_BLOCKERS.md).
