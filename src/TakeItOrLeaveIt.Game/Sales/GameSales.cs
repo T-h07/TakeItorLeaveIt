@@ -17,18 +17,18 @@ namespace TakeItOrLeaveIt.Game.Sales;
 /// </summary>
 internal static class GameSales
 {
+    private const int MaxOnceKeys = 500;
+
     private static readonly HashSet<string> LoggedOnce = new(StringComparer.Ordinal);
 
-    // Last validation, keyed by contract, catalog generation and the identity/quantity of each handover item.
-    // The handover screen asks the same question many times per second; this keeps that path allocation-free.
+    // Last validation, keyed by contract, catalog generation and each handover item's identity: native address,
+    // product id, stack size, package amount, packaging and quality tier. The handover screen asks the same question
+    // many times per second. Phase 08: the address alone is not an identity (a freed item's address can be reused by
+    // another item), so the key also covers everything the validation reads; any difference is a cache miss.
     private static string? _cacheContract;
     private static long _cacheSignature;
     private static DeliveryValidation? _cacheValidation;
     private static MatchResult? _cacheMatch;
-
-    // GUID text of the last contract seen (GUID.ToString allocates).
-    private static IntPtr _lastContractPointer;
-    private static string? _lastContractId;
 
     public static PlayerSaleCoordinator? Coordinator { get; set; }
 
@@ -44,16 +44,9 @@ internal static class GameSales
             return null;
         }
 
-        var pointer = contract.Pointer;
-        if (pointer == _lastContractPointer && _lastContractId is not null)
-        {
-            return _lastContractId;
-        }
-
-        var id = contract.GUID.ToString();
-        _lastContractPointer = pointer;
-        _lastContractId = id;
-        return id;
+        // Phase 08: read every time. A pointer-keyed cache could return another contract's id once a freed contract's
+        // native address is reused.
+        return contract.GUID.ToString();
     }
 
     /// <summary>The managed order for this contract, or null when vanilla rules apply.</summary>
@@ -68,6 +61,38 @@ internal static class GameSales
 
         contractId = ContractId(contract);
         return coordinator.Find(contractId);
+    }
+
+    /// <summary>
+    /// Phase 08: true when a player order snapshot or dealer appointment exists for this contract, even while the
+    /// session is not authoritative. Such a contract never falls back to the game's exact-product judgement.
+    /// </summary>
+    public static bool HeldAny(Contract? contract, out string? contractId)
+    {
+        contractId = null;
+        var orders = Coordinator;
+        var dealers = GameDealers.Coordinator;
+        if (contract is null || ((orders is null || orders.Book.Count == 0) && (dealers is null || dealers.ActiveAppointments == 0)))
+        {
+            return false;
+        }
+
+        contractId = ContractId(contract);
+        return (orders?.HoldsSnapshot(contractId) ?? false) || (dealers?.HoldsSnapshot(contractId) ?? false);
+    }
+
+    /// <summary>Phase 08: true when a player order snapshot exists for this contract (authority ignored).</summary>
+    public static bool HeldPlayerOrder(Contract? contract, out string? contractId)
+    {
+        contractId = null;
+        var orders = Coordinator;
+        if (contract is null || orders is null || orders.Book.Count == 0)
+        {
+            return false;
+        }
+
+        contractId = ContractId(contract);
+        return orders.HoldsSnapshot(contractId);
     }
 
     /// <summary>True when the contract is a managed player order or a managed dealer appointment.</summary>
@@ -204,16 +229,20 @@ internal static class GameSales
         _cacheContract = null;
         _cacheValidation = null;
         _cacheMatch = null;
-        _lastContractPointer = IntPtr.Zero;
-        _lastContractId = null;
     }
 
     /// <summary>Logs a message once per key (bounded), so per-frame callbacks cannot flood the log.</summary>
     public static void Once(string key, string message, bool warning = false)
     {
-        if (LoggedOnce.Count > 500 || !LoggedOnce.Add(key))
+        if (LoggedOnce.Count >= MaxOnceKeys || !LoggedOnce.Add(key))
         {
             return;
+        }
+
+        if (LoggedOnce.Count == MaxOnceKeys)
+        {
+            // Phase 08: say so once instead of going silent.
+            Log?.Warning($"{MaxOnceKeys} distinct one-time messages logged; further one-time messages are suppressed until the game restarts.");
         }
 
         if (warning)
@@ -280,15 +309,43 @@ internal static class GameSales
     {
         unchecked
         {
+            const long prime = 1099511628211L;
             long hash = 1469598103934665603L ^ (CatalogGeneration?.Invoke() ?? 0);
             for (var i = 0; i < items.Count; i++)
             {
                 var item = items[i];
-                hash = (hash ^ (item is null ? 0 : item.Pointer.ToInt64())) * 1099511628211L;
-                hash = (hash ^ (item is null ? 0 : item.Quantity)) * 1099511628211L;
+                if (item is null)
+                {
+                    hash = (hash ^ 0x5bd1e995L) * prime;
+                    continue;
+                }
+
+                hash = (hash ^ item.Pointer.ToInt64()) * prime;
+                hash = (hash ^ item.Quantity) * prime;
+                var id = item.ID;
+                if (id is not null)
+                {
+                    for (var c = 0; c < id.Length; c++)
+                    {
+                        hash = (hash ^ id[c]) * prime;
+                    }
+                }
+
+                hash = (hash ^ (id?.Length ?? -1)) * prime;
+                var product = item.TryCast<ProductItemInstance>();
+                if (product is not null)
+                {
+                    hash = (hash ^ product.Amount) * prime;
+                    hash = (hash ^ (product.AppliedPackaging != null ? 1 : 2)) * prime;
+                    hash = (hash ^ ((int)product.Quality + 16)) * prime;
+                }
+                else
+                {
+                    hash = (hash ^ 3) * prime;
+                }
             }
 
-            return (hash ^ items.Count) * 1099511628211L;
+            return (hash ^ items.Count) * prime;
         }
     }
 }

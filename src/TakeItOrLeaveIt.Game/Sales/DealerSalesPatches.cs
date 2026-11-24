@@ -6,6 +6,7 @@ using Il2CppScheduleOne.Economy;
 using Il2CppScheduleOne.ItemFramework;
 using Il2CppScheduleOne.Quests;
 using TakeItOrLeaveIt.Core.Dealers;
+using TakeItOrLeaveIt.Core.Diagnostics;
 using TakeItOrLeaveIt.Game.Patching;
 using ItemList = Il2CppSystem.Collections.Generic.List<Il2CppScheduleOne.ItemFramework.ItemInstance>;
 
@@ -70,11 +71,22 @@ internal sealed class DealerSalesPatches : IPatchModule
 
         string? id = null;
         var managed = false;
+        var held = false;
         HandoverPlan plan;
         try
         {
             id = GameSales.ContractId(contract);
+            held = coordinator.HoldsSnapshot(id);
             managed = coordinator.Find(id) is not null;
+            if (!managed && held)
+            {
+                // Phase 08 (fail closed): the appointment exists but authority is not confirmed right now. Never fall
+                // back to the game's exact-product removal for it; hand over nothing this time.
+                items ??= new ItemList();
+                GameSales.Once("dealer-held-unchecked:" + id, $"Dealer order {id}: session authority not confirmed at handover; nothing handed over (the appointment is kept).", warning: true);
+                return false;
+            }
+
             if (!managed)
             {
                 if (coordinator.BlocksUnmanaged(GameSales.ToRequest(contract, isPlayerContract: false), GameDealers.DealerId(__instance), out var reason))
@@ -99,13 +111,13 @@ internal sealed class DealerSalesPatches : IPatchModule
         }
         catch (Exception ex)
         {
-            if (!managed)
+            if (!managed && !held)
             {
                 return true;
             }
 
             items ??= new ItemList();
-            GameSales.Once("dealer-plan-error", $"Dealer handover planning failed; nothing handed over for this managed order. {ex.GetType().Name}: {ex.Message}", warning: true);
+            GameSales.Once("dealer-plan-error", $"Dealer handover planning failed; nothing handed over for this managed order. {LogText.Describe(ex)}", warning: true);
             return false;
         }
 
@@ -145,7 +157,7 @@ internal sealed class DealerSalesPatches : IPatchModule
                         continue;
                     }
 
-                    var itemUnits = (long)item.Quantity * item.Amount;
+                    var itemUnits = (long)item.Quantity * (item.TryCast<Il2CppScheduleOne.Product.ProductItemInstance>()?.Amount ?? 1);
                     units += itemUnits;
                     removedItems.Add(item);
                     // Phase 07: record what actually left (product and tier); the game's removal takes a minimum, not a lot.
@@ -166,7 +178,7 @@ internal sealed class DealerSalesPatches : IPatchModule
 
             // Never run the original after a removal attempt: that could take the stock twice. What was removed so far
             // is checked below and given back unless it is exactly the planned amount.
-            GameSales.Once("dealer-remove-error:" + id, $"Dealer removal for order {id} failed part-way. {ex.GetType().Name}: {ex.Message}", warning: true);
+            GameSales.Once("dealer-remove-error:" + id, $"Dealer removal for order {id} failed part-way. {LogText.Describe(ex)}", warning: true);
         }
 
         items ??= new ItemList();
@@ -184,6 +196,8 @@ internal sealed class DealerSalesPatches : IPatchModule
         {
             // No partial delivery: every removed item goes back to the dealer and the customer gets nothing.
             var returned = 0;
+            var queued = 0;
+            var owner = plan.Appointment?.DealerId ?? GameDealers.DealerId(__instance);
             foreach (var item in removedItems)
             {
                 try
@@ -193,11 +207,23 @@ internal sealed class DealerSalesPatches : IPatchModule
                 }
                 catch (Exception ex)
                 {
-                    GameSales.Once("dealer-return-error:" + id, $"Dealer order {id}: could not give a removed item back to the dealer. {ex.GetType().Name}: {ex.Message}", warning: true);
+                    // Phase 08: keep the item and retry on the dealer's next ticks instead of losing it.
+                    var itemUnits = (long)item.Quantity * (item.TryCast<Il2CppScheduleOne.Product.ProductItemInstance>()?.Amount ?? 1);
+                    if (owner is not null && GameDealers.PendingReturns.Add(owner, item, itemUnits))
+                    {
+                        queued++;
+                    }
+                    else
+                    {
+                        GameSales.Log?.Error($"Dealer order {id}: a removed item ({itemUnits} unit(s)) could not be given back and could not be queued for a retry; it is lost. {LogText.Describe(ex)}");
+                    }
+
+                    GameSales.Once("dealer-return-error:" + id, $"Dealer order {id}: could not give a removed item back to the dealer at once; it is retried on the dealer's next ticks. {LogText.Describe(ex)}", warning: true);
                 }
             }
 
-            GameSales.Log?.Warning($"Dealer order {id}: removal returned {units} of {plan.Appointment?.Order.RequiredUnits} planned unit(s); {returned} item stack(s) given back to the dealer, nothing handed over.");
+            var queuedText = queued > 0 ? $", {queued} queued for a retry" : string.Empty;
+            GameSales.Log?.Warning($"Dealer order {id}: removal returned {units} of {plan.Appointment?.Order.RequiredUnits} planned unit(s); {returned} item stack(s) given back to the dealer{queuedText}, nothing handed over.");
         }
 
         try
@@ -222,7 +248,7 @@ internal sealed class DealerSalesPatches : IPatchModule
             }
             catch (Exception ex)
             {
-                GameSales.Once("dealer-lot-reconcile:" + id, $"Dealer order {id}: re-checking reservations after a quality-tier difference failed; it is retried on the dealer's next tick. {ex.GetType().Name}: {ex.Message}", warning: true);
+                GameSales.Once("dealer-lot-reconcile:" + id, $"Dealer order {id}: re-checking reservations after a quality-tier difference failed; it is retried on the dealer's next tick. {LogText.Describe(ex)}", warning: true);
             }
         }
 
@@ -238,6 +264,7 @@ internal sealed class DealerSalesPatches : IPatchModule
         {
             if (__instance is not null)
             {
+                GameDealers.RetryReturns(__instance);
                 GameDealers.Observe(__instance);
                 GameDealers.MaybeReconcile(__instance);
                 GameDealers.MaybeNotify(__instance);
@@ -245,7 +272,7 @@ internal sealed class DealerSalesPatches : IPatchModule
         }
         catch (Exception ex)
         {
-            GameSales.Once("dealer-reconcile-error", $"Dealer stock reconcile failed; it is retried at the handover. {ex.GetType().Name}: {ex.Message}", warning: true);
+            GameSales.Once("dealer-reconcile-error", $"Dealer stock reconcile failed; it is retried at the handover. {LogText.Describe(ex)}", warning: true);
         }
     }
 }

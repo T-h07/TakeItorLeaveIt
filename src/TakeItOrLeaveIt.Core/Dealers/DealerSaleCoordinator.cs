@@ -348,6 +348,13 @@ public sealed class DealerSaleCoordinator
             ? appointment
             : null;
 
+    /// <summary>
+    /// Phase 08: true while a live (not ended) appointment exists for the contract, whatever the current authority. A
+    /// held appointment never falls back to the game's exact-product removal or judgement.
+    /// </summary>
+    public bool HoldsSnapshot(string? contractId)
+        => contractId is not null && _appointments.TryGetValue(contractId, out var appointment) && !appointment.IsTerminal;
+
     public bool HasAppointmentsFor(string? dealerId)
         => dealerId is not null && _appointments.Values.Any(a => a.DealerId == dealerId && !a.IsTerminal && a.State != AppointmentState.CommitObserved);
 

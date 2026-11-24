@@ -146,6 +146,13 @@ public sealed class PlayerSaleCoordinator
     public SaleTransaction? Find(string? contractId)
         => IsAuthoritative && _book.TryGet(contractId, out var transaction) && !transaction.IsTerminal ? transaction : null;
 
+    /// <summary>
+    /// Phase 08: true while a live (not ended) snapshot exists for the contract, whatever the current authority. A held
+    /// contract never falls back to the game's exact-product rule (<see cref="ManagedHandoverGuard"/>).
+    /// </summary>
+    public bool HoldsSnapshot(string? contractId)
+        => _book.TryGet(contractId, out var transaction) && !transaction.IsTerminal;
+
     /// <summary>Validates handover items for a managed contract; null when the contract follows vanilla rules.</summary>
     public DeliveryValidation? Validate(string? contractId, IReadOnlyList<DeliveredItem?> items)
     {
