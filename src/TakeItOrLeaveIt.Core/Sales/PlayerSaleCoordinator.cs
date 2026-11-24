@@ -64,8 +64,27 @@ public sealed class PlayerSaleCoordinator
         var detail = !isServer
             ? "Not the host: player sales use vanilla rules."
             : playerCount > 1
-                ? $"{playerCount} players: player sales use vanilla rules (multiplayer is Phase 07)."
+                ? $"{playerCount} players: player sales use vanilla rules (legacy single-player gate; the game uses the Phase 07 session model)."
                 : "Single player host.";
+        Apply(authoritative, detail);
+    }
+
+    /// <summary>
+    /// Phase 07 gate: authoritative only when the session model allows this feature (the host, single player or
+    /// multiplayer). Clients, unsupported and disconnected sessions leave every contract vanilla.
+    /// </summary>
+    public void ApplySession(TakeItOrLeaveIt.Core.Multiplayer.SessionDecision decision)
+    {
+        if (decision is null)
+        {
+            throw new ArgumentNullException(nameof(decision));
+        }
+
+        Apply(decision.Capabilities.PlayerOrders, decision.Detail);
+    }
+
+    private void Apply(bool authoritative, string detail)
+    {
         if (authoritative != IsAuthoritative || detail != AuthorityDetail)
         {
             IsAuthoritative = authoritative;
