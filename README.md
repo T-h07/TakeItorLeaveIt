@@ -4,7 +4,13 @@ A **Schedule I** quality-of-life mod for configurable customer and dealer sales 
 
 Customers request a **category and quantity** rather than an exact recipe. Players choose which discovered products can fulfill those orders using an **in-game mod menu**, with category-specific rules for the player and hired dealers.
 
-> **Status: Phase 05 (Advanced rules), implementation complete; physical acceptance of Phases 03-05 not yet tested.**
+> **Status: Phase 07 (Multiplayer and compatibility), implementation complete; simulation-tested only.** Real
+> co-op and all in-game testing of Phases 03-07 are deferred to Phase 08. Phase 06 made save data safe
+> (per-save profiles, safe writes, recovery). Phase 07 makes the host the only authority in co-op, shows the
+> host's rules read-only to modded clients and checks the running game build
+> ([docs/MULTIPLAYER.md](docs/MULTIPLAYER.md), [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)).
+>
+> Earlier status:
 > Phase 00 (foundation) is verified in game on Schedule I v0.4.7f12 (IL2CPP). Phases 01 (product discovery and
 > rule engine), 02 (the **Take It** phone app) and 03 (player sales) are merged; Phases 02's layout fix and 03
 > await in-game tests. Phase 04 applies the same category orders to **hired dealers**: a dealer reserves
@@ -15,7 +21,10 @@ Customers request a **category and quantity** rather than an exact recipe. Playe
 > exact-recipe lists, blocklists, quality and effect rules, mixing modes, separate player/dealer switches, dealer
 > overrides and presets ([docs/ADVANCED_RULES.md](docs/ADVANCED_RULES.md)). Not yet tested in game. No release exists.
 
-## What works now (Phase 05)
+## What works now (Phase 07)
+
+- **Co-op** ([docs/MULTIPLAYER.md](docs/MULTIPLAYER.md)): the host runs Take It (offers, dealers, the host's own handovers); modded clients see "Host controls Take It settings" and the host's rules read-only; a client's own handover keeps the game's exact-product rule. Not tested in a real co-op game.
+- **Compatibility** ([docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)): the running game build is classified (only v0.4.7f12 is build verified) and untested builds warn.
 
 - **Advanced rules** ([docs/ADVANCED_RULES.md](docs/ADVANCED_RULES.md)): allowed or blocked lists by exact recipe or by base strain (lineage read from the game's recorded mix recipes, never from names); minimum quality checked on handover items and dealer stock; required/excluded effects with conflict warnings; four mixing modes; player and dealer sales switches; per-dealer overrides; presets with preview. Settings migrate to schema 2 with a one-time backup.
 
@@ -34,7 +43,7 @@ Customers request a **category and quantity** rather than an exact recipe. Playe
 - Customers order "N of a category" (e.g. 5 weed) instead of a specific recipe or effect mix.
 - An in-game menu (phone app, Phase 02) that shows only products **already unlocked in the active save**: per-category *Any unlocked / Selected only / Disabled*, multi-select strains and recipes, quality and effect rules, mixed stacks, presets.
 - The same rules applied to hired dealers and their appointments, with separate player and dealer settings.
-- Per-save settings stored separately from vanilla saves; host-authoritative co-op.
+- Per-save settings stored separately from vanilla saves; host-authoritative co-op (Phase 07, simulation-tested).
 - Never unlocks products, never creates items, pays exactly once.
 
 Full plan: **[ROADMAP.md](ROADMAP.md)** · menu design: **[docs/MOD_MENU_SPEC.md](docs/MOD_MENU_SPEC.md)**
@@ -110,13 +119,18 @@ See [docs/BUILDING.md](docs/BUILDING.md) (output locations, optional auto-deploy
 | [docs/PHASE_05_TESTING.md](docs/PHASE_05_TESTING.md) | Phase 05 in-game scenarios (17 areas), all NOT TESTED |
 | [docs/PHASE_06_ANALYSIS.md](docs/PHASE_06_ANALYSIS.md) | Phase 06 persistence audit, safe writes, recovery and compatibility rules, Phase 08 assumptions |
 | [docs/PHASE_06_TESTING.md](docs/PHASE_06_TESTING.md) | Phase 06 in-game scenarios for Phase 08, all NOT TESTED |
+| [docs/PHASE_07_NETWORK_ANALYSIS.md](docs/PHASE_07_NETWORK_ANALYSIS.md) | Phase 07 call-graph evidence: where each sale step runs, authority, rules transport, blockers |
+| [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md) | Co-op: sessions, rules sharing, the read-only client menu, sales in co-op |
+| [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) | Compatibility matrix, co-op modes A-E, startup checks |
+| [docs/PHASE_07_TESTING.md](docs/PHASE_07_TESTING.md) | Phase 07 co-op scenarios for Phase 08, all NOT TESTED |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Project boundaries, adapter design, eligibility engine, S1API evaluation |
 | [docs/BUILDING.md](docs/BUILDING.md) | Build, test, package, local deploy |
 | [docs/INSTALLATION.md](docs/INSTALLATION.md) | Installing and verifying the development DLL |
 
 ## Current limitations
 
-- Player and dealer sales are untested in game, single player only, and exist only in the IL2CPP build made with local game references (not in the CI artifact, not in the Mono build). The customer's phone message names the game's chosen product, which is now always a permitted one; the handover screen shows the real requirement.
+- Co-op (Phase 07) is simulation-tested only. A client's own handover keeps the game's exact-product rule (the host cannot check it without patching a generated RPC); dealer restock texts reach the host only; no host migration.
+- Player and dealer sales are untested in game and exist only in the IL2CPP build made with local game references (not in the CI artifact, not in the Mono build). The customer's phone message names the game's chosen product, which is now always a permitted one; the handover screen shows the real requirement.
 - A dealer short of permitted stock still goes to the customer and hands over nothing; what the customer then does is the game's own behaviour (PROBABLE until tested).
 - Dealers accept contracts with the game's own stock check. Phase 05 rules are untested in game; the dealer list for overrides fills as dealers update in the session; whether the offer hook's dealer argument identifies the dealer is PROBABLE.
 - Phase 06 save-data handling (per-save profiles, safe writes, backups and recovery) is verified by automated tests only; in-game confirmation is scheduled for Phase 08.

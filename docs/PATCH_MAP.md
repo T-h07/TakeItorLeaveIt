@@ -158,9 +158,17 @@ only as a secondary check and for "base strain" grouping. **Never** match on dis
 - **Probable:** Schedule I uses **FishNet** networking. S1API references `FishNet.Runtime` / `Il2CppFishNet.Runtime`,
   and generated names such as `RpcLogic___FinishAndNameMix_4237212381` and `sync___get_value_onlineBalance`
   are FishNet's RPC/SyncVar code generation (E4).
-- **UNVERIFIED:** whether handover acceptance, payment, inventory removal and dealer sales run on the
-  host/server only. Generated RPC suffixes are hashes that can change between game builds, so patches must
-  target the logic methods, never the `RpcLogic___…_<hash>` names (or must resolve them dynamically).
+- **Verified (Phase 07, call graph of v0.4.7f12):** offers (`Customer.OnMinPass`), contract acceptance
+  (`QuestManager.ContractAccepted`), contract completion (`Contract.Complete`), dealer ticks and dealer item
+  removal run on the server only; clients receive contracts through `CreateContract_Networked` ->
+  `CreateContract_Local`. `Customer.ProcessHandover` runs on the machine of the player who handed over and sends
+  `ProcessHandoverServerSide(items, handoverByPlayer, totalPayment, productList, satisfaction, dealerObject)`,
+  which has **no contract argument** and a sender-computed payment; the server pays money, XP and the dealer cut.
+- Generated RPC suffixes are hashes that change between builds: the mod never patches or resolves a
+  `RpcLogic___…_<hash>` method. Consequence: a client's own handover keeps the game's exact-product rule.
+- Rules transport: Steam lobby data (`SteamMatchmaking.SetLobbyData/GetLobbyData/DeleteLobbyData`,
+  `GetLobbyOwner`; `ScheduleOne.Networking.Lobby`). Compile-verified, **not runtime-verified**.
+- Full analysis: [PHASE_07_NETWORK_ANALYSIS.md](PHASE_07_NETWORK_ANALYSIS.md). OBS-05 remains the Phase 08 runtime check.
 
 ## 8. Flow maps and missing links
 

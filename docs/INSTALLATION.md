@@ -11,11 +11,15 @@
 > [PHASE_01_TESTING.md](PHASE_01_TESTING.md), [PHASE_02_TESTING.md](PHASE_02_TESTING.md),
 > [PHASE_03_TESTING.md](PHASE_03_TESTING.md), [PHASE_04_TESTING.md](PHASE_04_TESTING.md), [PHASE_05_TESTING.md](PHASE_05_TESTING.md).
 
+> **Phase 07:** in co-op, install the same package on every player's machine. The host runs Take It; clients
+> see the host's rules read-only. Co-op is not yet tested in game ([MULTIPLAYER.md](MULTIPLAYER.md)); the full
+> compatibility matrix is in [COMPATIBILITY.md](COMPATIBILITY.md).
+
 ## 1. Compatibility
 
 | Item | Requirement | Status |
 | --- | --- | --- |
-| Game | Schedule I (Steam app 3164500), Windows | Game build not yet recorded; fill in from the probe |
+| Game | Schedule I (Steam app 3164500), Windows | v0.4.7f12 IL2CPP is the only build verified; the startup log line `Compatibility: …; game build: …` says whether yours is |
 | Runtime | IL2CPP (default branch) → `Il2Cpp` build · Mono (`alternate` beta) → `Mono` build | Both builds compile; neither has been loaded in-game yet |
 | Loader | **MelonLoader 0.7.3** recommended (0.7.0+ accepted with a warning; avoid 0.7.1 on IL2CPP) | Built against 0.7.3 |
 | S1API (S1API_Forked) | **3.2.3** (`S1API.Il2Cpp.MelonLoader.dll`), needed only for the phone menu. Without it the mod runs without a menu | Compiled against 3.2.3.0; in-game loading not yet observed |
@@ -126,3 +130,5 @@ uninstall option or verify the game files in Steam.
 - Player sales are untested in game, single player only, IL2CPP-only and only in builds made with local game
   references (see [PLAYER_SALES.md §10](PLAYER_SALES.md#10-known-limitations)). Dealer sales: see [DEALER_SALES.md §7](DEALER_SALES.md#7-known-limitations); enhancements: [PHASE_04_ENHANCEMENTS.md §7](PHASE_04_ENHANCEMENTS.md#7-limitations).
 - The phone menu is IL2CPP-only and needs S1API 3.2.3; the Mono build has no menu.
+- Co-op: simulation-tested only; a client's own handover keeps the game's exact-product rule; no host migration
+  ([MULTIPLAYER.md](MULTIPLAYER.md)).

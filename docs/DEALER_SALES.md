@@ -128,7 +128,10 @@ is then removed and the game runs vanilla). `Disabled` means the mod is off for 
 
 ## 7. Known limitations
 
-- Single player only (Phase 07 for co-op).
+- Co-op (Phase 07, simulation-tested only): dealer appointments run on the host for every dealer; the removal is
+  checked by product and quality tier (a wrong product or too few units rolls the appointment back to waiting, a
+  different tier that still meets the minimum is accepted and logged); a repeated completion callback is
+  ignored. Restock texts reach the host's phone only. See [MULTIPLAYER.md](MULTIPLAYER.md).
 - Acceptance stays vanilla: a dealer accepts a contract with the game's own stock check
   (`ShouldAcceptContract`, not patched). Offers only name permitted products now (offer filter).
 - A short appointment still makes the dealer go to the customer; the handover is withheld and the game's own
