@@ -206,6 +206,14 @@ internal sealed class SettlementHarness
         return true;
     }
 
+    /// <summary>
+    /// Phase 07: the contract completed through a client's handover. The game judged and settled it on the client and the
+    /// host only saw the contract complete; the host's own handover hooks never ran.
+    /// </summary>
+    public void CompletedByClient(string contractId) => End(contractId, "Completed", SaleEnd.Completed);
+
+    public bool IsActive(string contractId) => _contracts.TryGetValue(contractId, out var c) && c.State == "Active";
+
     private void End(string contractId, string state, SaleEnd end)
     {
         var contract = _contracts[contractId];
