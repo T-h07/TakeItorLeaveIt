@@ -123,6 +123,9 @@ See [docs/BUILDING.md](docs/BUILDING.md) (output locations, optional auto-deploy
 | [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md) | Co-op: sessions, rules sharing, the read-only client menu, sales in co-op |
 | [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) | Compatibility matrix, co-op modes A-E, startup checks |
 | [docs/PHASE_07_TESTING.md](docs/PHASE_07_TESTING.md) | Phase 07 co-op scenarios for Phase 08, all NOT TESTED |
+| [docs/PHASE_08_RELEASE_AUDIT.md](docs/PHASE_08_RELEASE_AUDIT.md) | Phase 08 release-readiness audit: baseline, assumptions, client-handover investigation, decisions needed |
+| [docs/PHASE_08_TESTING.md](docs/PHASE_08_TESTING.md) | Phase 08 master acceptance tracker (all Phase 01–07 IDs), release candidates, batch instructions |
+| [docs/PHASE_08_RELEASE_BLOCKERS.md](docs/PHASE_08_RELEASE_BLOCKERS.md) | Release blockers P0–P3 and their status |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Project boundaries, adapter design, eligibility engine, S1API evaluation |
 | [docs/BUILDING.md](docs/BUILDING.md) | Build, test, package, local deploy |
 | [docs/INSTALLATION.md](docs/INSTALLATION.md) | Installing and verifying the development DLL |
