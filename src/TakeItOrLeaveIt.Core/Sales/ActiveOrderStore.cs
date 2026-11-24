@@ -350,7 +350,21 @@ public sealed class ActiveOrderStore
             return null;
         }
 
-        var mixed = !body.TryGetValue("mixedDeliveries", out var m) || m is not bool mixedValue || mixedValue;
+        // Phase 08: an absent field (older file) keeps the historical default; a present but damaged value is made
+        // stricter (single-product deliveries), never looser.
+        var mixed = true;
+        if (body.TryGetValue("mixedDeliveries", out var m))
+        {
+            if (m is bool mixedValue)
+            {
+                mixed = mixedValue;
+            }
+            else
+            {
+                mixed = false;
+                issues.Add($"Order {id} has an unreadable mixed-delivery flag; mixed deliveries are refused for it.");
+            }
+        }
         var revision = body.TryGetValue("policyRevision", out var r) && r is double rev && rev >= 0 && rev <= long.MaxValue ? (long)rev : 0;
         var requested = Keys(body, "requestedProducts");
 
