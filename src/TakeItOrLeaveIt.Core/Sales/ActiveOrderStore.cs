@@ -168,16 +168,34 @@ public sealed class ActiveOrderStore
     }
 
     /// <summary>The snapshot fields shared by the player and dealer files.</summary>
-    internal static Dictionary<string, object?> WriteOrder(CategoryOrder order) => new(StringComparer.Ordinal)
+    internal static Dictionary<string, object?> WriteOrder(CategoryOrder order)
     {
-        ["contract"] = order.ContractId,
-        ["category"] = order.Category.Value,
-        ["requiredUnits"] = order.RequiredUnits,
-        ["allowedProducts"] = order.AllowedProducts.Select(p => (object?)p.Value).ToList(),
-        ["requestedProducts"] = order.RequestedProducts.Select(p => (object?)p.Value).ToList(),
-        ["mixedDeliveries"] = order.MixedDeliveries,
-        ["policyRevision"] = order.PolicyRevision,
-    };
+        var body = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["contract"] = order.ContractId,
+            ["category"] = order.Category.Value,
+            ["requiredUnits"] = order.RequiredUnits,
+            ["allowedProducts"] = order.AllowedProducts.Select(p => (object?)p.Value).ToList(),
+            ["requestedProducts"] = order.RequestedProducts.Select(p => (object?)p.Value).ToList(),
+            ["mixedDeliveries"] = order.MixedDeliveries,
+            ["policyRevision"] = order.PolicyRevision,
+        };
+
+        // Added with the fair-price rule (still schema 1: older readers ignore unknown fields, and entries without
+        // "pricing" load through the legacy compatibility path).
+        if (order.PricingBasis != PricingBasis.Legacy)
+        {
+            body["pricing"] = order.PricingBasis == PricingBasis.Priced ? "priced" : "requestedOnly";
+            if (order.QuotedValue is decimal quoted)
+            {
+                body["quotedValue"] = (double)quoted;
+            }
+
+            body["unitPrices"] = order.UnitPrices.ToDictionary(p => p.Key.Value, p => (object?)(double)p.Value, StringComparer.Ordinal);
+        }
+
+        return body;
+    }
 
     /// <summary>
     /// The entries of a versioned document that have a unique, valid contract id. Throws when the document itself
@@ -249,7 +267,60 @@ public sealed class ActiveOrderStore
 
         var mixed = !body.TryGetValue("mixedDeliveries", out var m) || m is not bool mixedValue || mixedValue;
         var revision = body.TryGetValue("policyRevision", out var r) && r is double rev && rev >= 0 && rev <= long.MaxValue ? (long)rev : 0;
-        return new CategoryOrder(id, category, (int)units, allowed, mixed, revision, Keys(body, "requestedProducts"));
+        var requested = Keys(body, "requestedProducts");
+        var pricing = body.TryGetValue("pricing", out var pr) ? pr as string : null;
+        if (pricing is null)
+        {
+            var legacy = new CategoryOrder(id, category, (int)units, allowed, mixed, revision, requested).WithLegacyPricing();
+            issues.Add(legacy.PricingBasis == PricingBasis.Legacy
+                ? $"Order {id} predates the fair-price rule and allows none of its requested products; kept unchanged."
+                : $"Order {id} predates the fair-price rule; limited to its requested product(s).");
+            return legacy;
+        }
+
+        PricingBasis? basis = pricing switch
+        {
+            "priced" => PricingBasis.Priced,
+            "requestedOnly" => PricingBasis.RequestedOnly,
+            _ => null,
+        };
+        if (basis is null)
+        {
+            issues.Add($"Order {id} has an unknown pricing basis; ignored.");
+            return null;
+        }
+
+        decimal? quoted = body.TryGetValue("quotedValue", out var q) && q is double qv && qv >= 0 && qv < 1e12 ? (decimal)qv : null;
+        var prices = new List<KeyValuePair<ProductKey, decimal>>();
+        if (body.TryGetValue("unitPrices", out var up) && up is Dictionary<string, object?> table)
+        {
+            foreach (var entry in table)
+            {
+                if (ProductKey.TryCreate(entry.Key, out var key) && entry.Value is double price && price >= 0 && price < 1e12)
+                {
+                    prices.Add(new KeyValuePair<ProductKey, decimal>(key, (decimal)price));
+                }
+            }
+        }
+
+        var order = new CategoryOrder(id, category, (int)units, allowed, mixed, revision, requested, basis.Value, quoted, prices);
+        var substitutesOutsideRequest = order.AllowedProducts.Any(p => !requested.Contains(p));
+        if (order.PricingBasis == PricingBasis.RequestedOnly && substitutesOutsideRequest)
+        {
+            // Damaged price data (or a requested-only entry edited by hand): never substitute on a quote that
+            // cannot be checked.
+            var safe = allowed.Where(requested.Contains).ToList();
+            if (safe.Count == 0)
+            {
+                issues.Add($"Order {id} has unusable price data and allows none of its requested products; ignored.");
+                return null;
+            }
+
+            issues.Add($"Order {id} has unusable price data; limited to its requested product(s).");
+            return new CategoryOrder(id, category, (int)units, safe, mixed, revision, requested, PricingBasis.RequestedOnly, null, prices);
+        }
+
+        return order;
     }
 
     private static List<ProductKey> Keys(Dictionary<string, object?> body, string name)

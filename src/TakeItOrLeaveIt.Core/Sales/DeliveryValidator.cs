@@ -52,6 +52,9 @@ public enum DeliveryRejection
     CatalogNotReady,
     TooFew,
     TooMany,
+
+    /// <summary>The basket is worth less than the agreed quote at the acceptance prices (fair-price rule).</summary>
+    BelowQuotedValue,
 }
 
 public sealed class DeliveryValidation
@@ -178,6 +181,17 @@ public static class DeliveryValidator
             return Reject(order, DeliveryRejection.TooMany, total, products, plan, null);
         }
 
+        // Defence in depth: allowed products are already priced at or above the quote, so this only refuses a
+        // snapshot whose allowed list no longer matches its prices (edited or damaged file).
+        if (order.PricingBasis == PricingBasis.Priced)
+        {
+            var value = FairPriceRule.BasketValue(order, stacks.Select(s => (s.Product, (long)s.Quantity)));
+            if (value is null || value < order.QuotedValue)
+            {
+                return Reject(order, DeliveryRejection.BelowQuotedValue, total, products, plan, null);
+            }
+        }
+
         return new DeliveryValidation(order, DeliveryRejection.None, total, products, plan, null, Describe(order, DeliveryRejection.None, total, catalog));
 
         DeliveryValidation Reject(CategoryOrder o, DeliveryRejection reason, long units, List<ProductKey> seen, AllocationPlan? p, string? slot)
@@ -218,6 +232,7 @@ public static class DeliveryValidator
             DeliveryRejection.CatalogNotReady => "Product data is still loading. Try again in a moment.",
             DeliveryRejection.TooFew => $"Needs {order.RequiredUnits} {category}: you offered {deliveredUnits}.",
             DeliveryRejection.TooMany => $"Needs exactly {order.RequiredUnits} {category}: you offered {deliveredUnits}.",
+            DeliveryRejection.BelowQuotedValue => "These products are worth less than the agreed price.",
             _ => "Delivery refused.",
         };
     }
