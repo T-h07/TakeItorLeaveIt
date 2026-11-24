@@ -67,6 +67,28 @@ public enum HandoverCompletion
     Ignored,
 }
 
+/// <summary>
+/// Phase 07: what the game's removal actually returned for one product and quality tier. The game's removal method
+/// takes a minimum quality, not an exact lot, so the result is checked rather than assumed.
+/// </summary>
+public sealed class RemovedLot
+{
+    public RemovedLot(ProductKey product, QualityTier? quality, long units)
+    {
+        Product = product;
+        Quality = quality;
+        Units = units;
+    }
+
+    public ProductKey Product { get; }
+
+    public QualityTier? Quality { get; }
+
+    public long Units { get; }
+
+    public override string ToString() => Quality is { } q ? $"{Units} x {Product} ({q})" : $"{Units} x {Product}";
+}
+
 public sealed class HandoverPlan
 {
     internal HandoverPlan(HandoverDecision decision, DealerAppointment? appointment, IReadOnlyList<ReservationLine> lines, string detail)
@@ -201,8 +223,27 @@ public sealed class DealerSaleCoordinator
         var detail = !isServer
             ? "Not the host: dealers use vanilla rules."
             : playerCount > 1
-                ? $"{playerCount} players: dealers use vanilla rules (multiplayer is Phase 07)."
+                ? $"{playerCount} players: dealers use vanilla rules (legacy single-player gate; the game uses the Phase 07 session model)."
                 : "Single player host.";
+        Apply(authoritative, detail);
+    }
+
+    /// <summary>
+    /// Phase 07 gate: authoritative only when the session model allows this feature (the host, single player or
+    /// multiplayer). Clients, unsupported and disconnected sessions leave every contract vanilla.
+    /// </summary>
+    public void ApplySession(TakeItOrLeaveIt.Core.Multiplayer.SessionDecision decision)
+    {
+        if (decision is null)
+        {
+            throw new ArgumentNullException(nameof(decision));
+        }
+
+        Apply(decision.Capabilities.DealerAppointments, decision.Detail);
+    }
+
+    private void Apply(bool authoritative, string detail)
+    {
         if (authoritative != IsAuthoritative || detail != AuthorityDetail)
         {
             IsAuthoritative = authoritative;
@@ -456,7 +497,9 @@ public sealed class DealerSaleCoordinator
     /// </summary>
     public HandoverCompletion CompleteHandover(string? contractId, long removedUnits)
     {
-        if (contractId is null || !_appointments.TryGetValue(contractId, out var appointment) || appointment.State != AppointmentState.Committing)
+        // Phase 07: a completed removal is final; a repeated completion for the same commit is ignored (no second release).
+        if (contractId is null || !_appointments.TryGetValue(contractId, out var appointment) || appointment.State != AppointmentState.Committing ||
+            appointment.RemovedUnits > 0)
         {
             return HandoverCompletion.Ignored;
         }
@@ -476,6 +519,69 @@ public sealed class DealerSaleCoordinator
         appointment.RemovedUnits = removedUnits;
         Version++;
         return HandoverCompletion.Committed;
+    }
+
+    /// <summary>
+    /// Phase 07 integrity check of a Fulfil removal. Committed only when the removed units are exactly the planned
+    /// products in the planned amounts and every unit meets the order's quality minimum. A tier different from the
+    /// reserved lot (the game picked another stack of at least the minimum) is accepted for the customer but reported in
+    /// <paramref name="lotMismatches"/>: the caller must reconcile the dealer's reservations with fresh stock right away
+    /// so no other appointment keeps a hold on units that left. Anything else rolls back (no partial or wrong delivery).
+    /// </summary>
+    public HandoverCompletion CompleteHandover(string? contractId, IReadOnlyList<RemovedLot>? removed, out int lotMismatches)
+    {
+        lotMismatches = 0;
+        if (contractId is null || !_appointments.TryGetValue(contractId, out var appointment) || appointment.State != AppointmentState.Committing ||
+            appointment.RemovedUnits > 0)
+        {
+            return HandoverCompletion.Ignored;
+        }
+
+        var lots = (removed ?? Array.Empty<RemovedLot>()).Where(l => l is not null && l.Units > 0).ToList();
+        var total = lots.Sum(l => l.Units);
+        if (total != appointment.Order.RequiredUnits || !Ledger.TryGet(contractId, out var reservation))
+        {
+            return CompleteHandover(contractId, total);
+        }
+
+        var planned = reservation.Lines.GroupBy(l => l.Product).ToDictionary(g => g.Key, g => (long)g.Sum(l => l.Units));
+        var actual = lots.GroupBy(l => l.Product).ToDictionary(g => g.Key, g => g.Sum(l => l.Units));
+        string? problem = null;
+        if (actual.Keys.Any(k => !planned.ContainsKey(k)) || planned.Any(p => !actual.TryGetValue(p.Key, out var units) || units != p.Value))
+        {
+            problem = $"the dealer's removal returned other products than planned ({string.Join(", ", lots)})";
+        }
+        else if (lots.Any(l => !QualityTiers.Meets(l.Quality, appointment.Order.MinimumQuality)))
+        {
+            problem = $"the dealer's removal returned units below the order's quality minimum ({string.Join(", ", lots)})";
+        }
+
+        if (problem is not null)
+        {
+            Ledger.Release(contractId);
+            appointment.TryMove(AppointmentState.WaitingForEligibleStock);
+            appointment.WithheldHandovers++;
+            Fault(appointment, $"Order {contractId}: {problem}; items returned to the dealer, nothing handed over, still waiting.");
+            Version++;
+            return HandoverCompletion.RolledBack;
+        }
+
+        foreach (var line in reservation.Lines.Where(l => l.Quality is not null))
+        {
+            var sameTier = lots.Where(l => l.Product == line.Product && l.Quality == line.Quality).Sum(l => l.Units);
+            if (sameTier < line.Units)
+            {
+                lotMismatches += (int)Math.Min(int.MaxValue, line.Units - sameTier);
+            }
+        }
+
+        if (lotMismatches > 0)
+        {
+            _log?.Info($"Dealer order {contractId}: the game handed over {lotMismatches} unit(s) from a different quality tier than reserved " +
+                       $"(planned {string.Join(", ", reservation.Lines)}, removed {string.Join(", ", lots)}); all meet the order. Reservations are re-checked.");
+        }
+
+        return CompleteHandover(contractId, total);
     }
 
     /// <summary>The removal could not start (error before any item moved): nothing is handed over; the appointment waits again.</summary>

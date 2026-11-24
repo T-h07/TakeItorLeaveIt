@@ -246,6 +246,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
         Sales.GameSales.Log = _log;
         Sales.GameSales.CatalogGeneration = () => _discovery.Catalog.State.Snapshot?.Generation ?? -1;
         Sales.SalesSession.Catalog = () => _discovery.Catalog.State.Snapshot;
+        Sales.SalesSession.Host = _sales;
         Sales.GameDealers.Coordinator = _sales.Dealers;
         Sales.GameDealers.Notifier = _sales.Notifier;
         _sales.SessionChanged = Sales.GameDealers.Reset; // dealer ids, seen dealers and timers belong to one save session
@@ -313,6 +314,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
             LoaderReportedRuntime = LoaderRuntime(),
             DiskDetectedRuntime = detection.Runtime,
             LoaderVersion = MelonLoader.Properties.BuildInfo.Version,
+            GameVersion = UnityInformationHandler.GameVersion,
         });
 
         foreach (var warning in report.Warnings)
@@ -325,7 +327,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
             throw new UnsupportedEnvironmentException(string.Join(" ", report.Errors));
         }
 
-        _log.Info($"Compatibility: {report.Status}.");
+        _log.Info($"Compatibility: {report.Status}; game build: {report.GameBuild}.");
         return report;
     }
 

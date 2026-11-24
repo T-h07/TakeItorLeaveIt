@@ -139,7 +139,8 @@ be written before the game closed, that order also falls back to vanilla after t
 | IL2CPP build from CI (no game references) | Unavailable: the status report says so, sales are vanilla |
 | Mono (alternate branch) | Unavailable: no Mono game references are exported, so there are no hooks |
 | Single player | Active |
-| Multiplayer (host with other players, or a client) | Inactive: vanilla rules. Customer handovers run through FishNet server RPCs; host-authority handling is Phase 07 |
+| Multiplayer host (Phase 07) | Active for offers and the **host's own** handovers (simulation-tested only) |
+| Multiplayer client (Phase 07) | Not managed: the client's handover keeps the game's exact-product rule; the menu shows the host's rules read-only. See [MULTIPLAYER.md](MULTIPLAYER.md) |
 
 ## 9. Status report
 
@@ -172,6 +173,6 @@ report says **Unavailable** with the reason, and the game runs vanilla.
   PROBABLE (call graph), confirmed only by the in-game tests.
 - `HandoverScreenContractMode.GetError` returning `true` for "there is an error" is PROBABLE; if it were the
   opposite, the match hook alone still blocks invalid deliveries (they score 0).
-- Single player only; dealers: see [DEALER_SALES.md](DEALER_SALES.md). Quality, effect, lineage and mixing rules
+- In co-op only the host's own handovers are category orders (Phase 07, [MULTIPLAYER.md](MULTIPLAYER.md)); dealers: see [DEALER_SALES.md](DEALER_SALES.md). Quality, effect, lineage and mixing rules
   (Phase 05): [ADVANCED_RULES.md](ADVANCED_RULES.md); handover items below the quality minimum are refused before
   transfer, and the customer's own quality judgement is unchanged.

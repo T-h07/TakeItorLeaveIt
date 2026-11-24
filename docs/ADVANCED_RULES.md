@@ -116,3 +116,11 @@ Settings are schema 2 (`UserData/TakeItOrLeaveIt/saves/<save id>.json`). The fir
 a one-time copy `<save id>.json.schema1.bak`. Values the mod cannot read make the affected category **Disabled**
 (reported in the log and Diagnostics) rather than guessing; an unknown mixing value falls back to one product per
 order.
+
+## 10. Co-op (Phase 07)
+
+In a co-op game the **host's** saved rules apply: offers, dealer appointments, dealer overrides and the host's own
+handovers follow them. A client with Take It sees the host's rules on every screen, read-only ("Host controls Take
+It settings."), and cannot edit, save, reset or apply a preset there; its own settings for its own saves are not
+touched. Unsaved changes on the host are never shared. Details: [MULTIPLAYER.md](MULTIPLAYER.md). Not tested in a
+real co-op game yet (Phase 08).

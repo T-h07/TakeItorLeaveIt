@@ -298,11 +298,16 @@ resolved for its scope (`PolicyConfiguration.ForScope`).
 
 ## 8. Multiplayer considerations (Phase 07)
 
-- Schedule I networking is **probably FishNet** (PATCH_MAP §7). The host must stay authoritative for
-  eligibility decisions, inventory, payment and dealer sales.
-- Clients receive the host's effective policy; client-side menus are read-only for host-owned rules.
-- RPC method names contain build-specific hashes, so they are never patch targets.
-- None of this is verified yet; OBS-05 in the patch map defines the first test.
+- Implemented in Phase 07 ([MULTIPLAYER.md](MULTIPLAYER.md), [PHASE_07_NETWORK_ANALYSIS.md](PHASE_07_NETWORK_ANALYSIS.md)).
+  Simulation-tested only; real co-op testing is Phase 08.
+- `Core/Multiplayer/`: `SessionAuthority` (pure: network facts -> one of nine `SessionState`s with explicit
+  `SessionCapabilities`), `PolicySync` (versioned codec, host publisher with session token, epoch and revision,
+  client with handshake, duplicate/stale/forged rejection and timeout), `MultiplayerSession` (ties both together
+  every 2 s; heartbeat 30 s) and `TransactionPhase`. Both sale coordinators take `ApplySession(SessionDecision)`.
+- `Game/Sales/GameNetwork.cs` reads FishNet/`Player` state and implements `IRulesChannel` over Steam lobby data.
+  No RPC is added or patched; every decision runs where the game already runs it (the host).
+- The menu controller has a host-controlled mode: it displays host rules read-only and never writes or applies
+  them. Only the host writes Take It files (`PersistenceQueue`).
 - Phase 03 verified (call graph) that customer handovers settle through a FishNet server RPC
   (`ProcessHandoverServerSide`) and that acceptance checks `InstanceFinder.IsServer`. Until Phase 07, player
   sales are active only on a server with at most one player; otherwise every hook defers to vanilla.

@@ -121,6 +121,7 @@ internal sealed class DealerSalesPatches : IPatchModule
         }
 
         var removedItems = new System.Collections.Generic.List<ItemInstance>();
+        var removedLots = new System.Collections.Generic.List<RemovedLot>();
         var removalStarted = false;
         long units = 0;
         try
@@ -144,8 +145,13 @@ internal sealed class DealerSalesPatches : IPatchModule
                         continue;
                     }
 
-                    units += (long)item.Quantity * item.Amount;
+                    var itemUnits = (long)item.Quantity * item.Amount;
+                    units += itemUnits;
                     removedItems.Add(item);
+                    // Phase 07: record what actually left (product and tier); the game's removal takes a minimum, not a lot.
+                    removedLots.Add(new RemovedLot(
+                        TakeItOrLeaveIt.Core.Products.ProductKey.TryCreate(item.ID, out var removedKey) ? removedKey : default, // unknown id: never matches the plan, so it rolls back
+                        GameSales.QualityOf(item), itemUnits));
                 }
             }
         }
@@ -164,7 +170,7 @@ internal sealed class DealerSalesPatches : IPatchModule
         }
 
         items ??= new ItemList();
-        var completion = coordinator.CompleteHandover(id, units);
+        var completion = coordinator.CompleteHandover(id, removedLots, out var lotMismatches);
         if (completion == HandoverCompletion.Committed)
         {
             foreach (var item in removedItems)
@@ -201,6 +207,23 @@ internal sealed class DealerSalesPatches : IPatchModule
         catch (Exception)
         {
             // cosmetic: the game moves overflow items on its own later
+        }
+
+        if (lotMismatches > 0)
+        {
+            // Another tier left than the one reserved: re-check every hold of this dealer against what is really left.
+            try
+            {
+                var after = GameDealers.Stock(__instance);
+                if (after is not null)
+                {
+                    coordinator.Reconcile(after, force: true);
+                }
+            }
+            catch (Exception ex)
+            {
+                GameSales.Once("dealer-lot-reconcile:" + id, $"Dealer order {id}: re-checking reservations after a quality-tier difference failed; it is retried on the dealer's next tick. {ex.GetType().Name}: {ex.Message}", warning: true);
+            }
         }
 
         GameSales.InvalidateCache();

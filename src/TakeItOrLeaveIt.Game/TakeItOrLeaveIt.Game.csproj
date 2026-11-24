@@ -71,6 +71,8 @@
     <Reference Include="Assembly-CSharp" HintPath="$(S1RefsDir)\MelonLoader\Il2CppAssemblies\Assembly-CSharp.dll" Private="false" />
     <Reference Include="Il2CppScheduleOne.Core" HintPath="$(S1RefsDir)\MelonLoader\Il2CppAssemblies\Il2CppScheduleOne.Core.dll" Private="false" />
     <Reference Include="Il2CppFishNet.Runtime" HintPath="$(S1RefsDir)\MelonLoader\Il2CppAssemblies\Il2CppFishNet.Runtime.dll" Private="false" />
+    <!-- Phase 07: the game's own Steamworks.NET interop, for the lobby data that carries the host's rules (compile-time only). -->
+    <Reference Include="Il2Cppcom.rlabrecque.steamworks.net" HintPath="$(S1RefsDir)\MelonLoader\Il2CppAssemblies\Il2Cppcom.rlabrecque.steamworks.net.dll" Private="false" />
     <Reference Include="Unity.TextMeshPro" HintPath="$(S1RefsDir)\MelonLoader\Il2CppAssemblies\Unity.TextMeshPro.dll" Private="false" />
   </ItemGroup>
 

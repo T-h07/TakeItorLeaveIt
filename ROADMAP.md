@@ -242,6 +242,13 @@ applied silently) when settings are damaged; game-side dealer caches reset per s
 
 **We call this done when:** Co-op testing shows consistent order outcomes and inventory/money totals, and every claimed supported build has been tested. Unsupported combinations are explicitly documented.
 
+**Status (implemented, simulation-tested only):** host-only authority through an explicit session model, the
+host's saved rules shared read-only over Steam lobby data (versioned, hashed, revisioned), idempotent dealer
+completion with a product/quality-tier removal check, game build classification. A client's own handover keeps
+the game's exact-product rule (blocker documented). Real co-op testing moves to Phase 08:
+[MULTIPLAYER.md](docs/MULTIPLAYER.md), [COMPATIBILITY.md](docs/COMPATIBILITY.md),
+[PHASE_07_NETWORK_ANALYSIS.md](docs/PHASE_07_NETWORK_ANALYSIS.md), [PHASE_07_TESTING.md](docs/PHASE_07_TESTING.md).
+
 ### Phase 08 — Final Testing, Packaging & v1.0.0 Release
 
 **Branch:** `feature/phase-08-release`

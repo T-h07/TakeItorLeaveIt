@@ -420,6 +420,12 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
                 _ => Theme.TextMuted,
             };
         }
+        else if (menu.HostControlText is { } hostText)
+        {
+            // Phase 07 client: read-only, the host decides.
+            _status.text = hostText;
+            _status.color = menu.ShowsHostRules ? Theme.TextMuted : Theme.Warning;
+        }
         else
         {
             var save = menu.ActiveSaveLabel is null ? "No save loaded" : "Save " + menu.ActiveSaveLabel;
@@ -458,6 +464,15 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
         UiKit.Size(UiKit.Label(toggleRow.transform, "Mod enabled for this save", Theme.BodySize, Theme.Text).gameObject, -1f, -1f, 1f, -1f, 0f);
         var (toggle, toggleLabel) = UiKit.Button(toggleRow.transform, string.Empty, Theme.SurfaceRaised, 100f, 36f, () => menu.SetModEnabled(!menu.IsModEnabled), 15, 80f);
         UiKit.SetButton(toggle, toggleLabel, menu.IsModEnabled ? "ON" : "OFF", menu.IsModEnabled ? Theme.Accent : Theme.DangerMuted, menu.CanEdit);
+
+        if (menu.HostControlText is { } hostText)
+        {
+            Line(c, hostText, menu.ShowsHostRules ? Theme.Accent : Theme.Warning);
+            Line(c, menu.ShowsHostRules
+                    ? "These are the host's rules. Only the host can change them; nothing is saved on this computer."
+                    : "Nothing can be changed here. The host's game decides every sale.",
+                Theme.TextMuted, Theme.SmallSize);
+        }
 
         Line(c, menu.ActiveSaveLabel is null ? "Active save: none" : $"Active save: {menu.ActiveSaveLabel}", Theme.TextMuted);
         Line(c, "Status: " + menu.AvailabilityText, menu.Availability == MenuAvailability.Ready ? Theme.Success : Theme.Warning);
@@ -582,7 +597,7 @@ public sealed class TakeItOrLeaveItPhoneApp : S1API.PhoneApp.PhoneApp
         Line(c, $"Profile: {menu.ActiveSaveLabel ?? "none"}; settings file {menu.SettingsFileState}",
             menu.PolicyReadyForSales || menu.ActiveSaveLabel is null ? Theme.TextMuted : Theme.Warning, Theme.SmallSize);
 
-        Heading(c, "Player and dealer sales");
+        Heading(c, "Session and sales (Phase 07)");
         foreach (var line in menu.SalesStatus?.Invoke() ?? new[] { "Player Sales: status unavailable" })
         {
             Line(c, line, Theme.TextMuted, Theme.SmallSize);

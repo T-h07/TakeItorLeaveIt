@@ -51,6 +51,11 @@ public sealed class ModMenuController : IDisposable
     private string _settingsFileState = "not loaded";
     private bool _disposed;
 
+    // Phase 07 client mode: the host's rules are displayed instead of this game's own draft, which is kept aside.
+    private string? _hostControl;
+    private PolicyConfiguration? _hostRules;
+    private PolicyConfiguration? _localDraft;
+
     private CategoryKey _category;
     private string? _dealer;
     private PolicyPreset? _pendingPreset;
@@ -107,8 +112,17 @@ public sealed class ModMenuController : IDisposable
         _ => MenuAvailability.WaitingForSave,
     };
 
-    /// <summary>Settings can be edited only for a loaded save with a ready catalog.</summary>
-    public bool CanEdit => Availability == MenuAvailability.Ready && _settingsLoaded;
+    /// <summary>Settings can be edited only for a loaded save with a ready catalog, and never while the host controls them.</summary>
+    public bool CanEdit => Availability == MenuAvailability.Ready && _settingsLoaded && _hostControl is null;
+
+    /// <summary>Phase 07: this game is a multiplayer client; the menu shows the host's rules read-only.</summary>
+    public bool IsHostControlled => _hostControl is not null;
+
+    /// <summary>Phase 07: what the client shows ("Host controls Take It settings", "Waiting for host rules"); null for the host.</summary>
+    public string? HostControlText => _hostControl;
+
+    /// <summary>Phase 07: the host's validated rules are displayed (false while waiting for them).</summary>
+    public bool ShowsHostRules => _hostControl is not null && _hostRules is not null;
 
     /// <summary>
     /// Phase 03: the saved policy of the active save was read successfully (or the save has none yet, so the
@@ -142,7 +156,7 @@ public sealed class ModMenuController : IDisposable
 
     public PolicyConfiguration Saved => _saved;
 
-    public bool HasUnsavedChanges => !string.Equals(Fingerprint(_draft), _savedFingerprint, StringComparison.Ordinal);
+    public bool HasUnsavedChanges => _hostControl is null && !string.Equals(Fingerprint(_draft), _savedFingerprint, StringComparison.Ordinal);
 
     public bool IsModEnabled => _draft.Enabled;
 
@@ -549,6 +563,12 @@ public sealed class ModMenuController : IDisposable
     /// <summary>Validates and persists the draft for the active save. Reports success only after the write succeeded.</summary>
     public bool Save()
     {
+        if (_hostControl is not null)
+        {
+            SetFeedback(FeedbackKind.Error, "Not saved: the host controls Take It settings in this game. Nothing is written on this computer.");
+            return false;
+        }
+
         if (!CanEdit || _session.IsNone)
         {
             SetFeedback(FeedbackKind.Error, "Nothing to save: no save is loaded or the product catalog is not ready.");
@@ -599,6 +619,12 @@ public sealed class ModMenuController : IDisposable
 
     public void Discard()
     {
+        if (_hostControl is not null)
+        {
+            SetFeedback(FeedbackKind.Info, _hostControl);
+            return;
+        }
+
         if (!HasUnsavedChanges)
         {
             SetFeedback(FeedbackKind.Info, "No unsaved changes.");
@@ -723,6 +749,7 @@ public sealed class ModMenuController : IDisposable
         {
             ApplySaved(PolicyConfiguration.Default);
             _draft = _saved;
+            ReapplyHostView();
             return;
         }
 
@@ -786,6 +813,64 @@ public sealed class ModMenuController : IDisposable
         ApplySaved(loaded);
         _draft = recovered ?? _saved;
         _settingsLoaded = true;
+        ReapplyHostView();
+    }
+
+    /// <summary>
+    /// Phase 07: switches the menu into (status not null) or out of (null) host-controlled mode. In host-controlled
+    /// mode the screens display <paramref name="hostRules"/> (or the defaults with the waiting text while they are not
+    /// known); this game's own draft is kept aside unchanged, every edit, preset, reset and save is refused, and the
+    /// live policy of this game is never replaced by the host's rules (they are display only).
+    /// </summary>
+    public void SetHostControlled(string? status, PolicyConfiguration? hostRules)
+    {
+        if (status is null)
+        {
+            if (_hostControl is null)
+            {
+                return;
+            }
+
+            _hostControl = null;
+            _hostRules = null;
+            if (_localDraft is not null)
+            {
+                _draft = _localDraft;
+                _localDraft = null;
+            }
+
+            Feedback = MenuFeedback.Empty;
+            Touch();
+            return;
+        }
+
+        if (string.Equals(status, _hostControl, StringComparison.Ordinal) && ReferenceEquals(hostRules, _hostRules))
+        {
+            return;
+        }
+
+        if (_hostControl is null)
+        {
+            _localDraft = _draft;
+            IsResetPending = false;
+            _pendingPreset = null;
+            _presetPreview = Array.Empty<string>();
+            _dealer = null;
+        }
+
+        _hostControl = status;
+        _hostRules = hostRules;
+        _draft = hostRules ?? PolicyConfiguration.Default;
+        Touch();
+    }
+
+    private void ReapplyHostView()
+    {
+        if (_hostControl is not null)
+        {
+            _localDraft = _draft;
+            _draft = _hostRules ?? PolicyConfiguration.Default;
+        }
     }
 
     private PolicyLoadResult SafeLoad(string saveIdentity)
@@ -921,7 +1006,7 @@ public sealed class ModMenuController : IDisposable
     {
         if (!CanEdit)
         {
-            SetFeedback(FeedbackKind.Warning, AvailabilityText);
+            SetFeedback(FeedbackKind.Warning, _hostControl ?? AvailabilityText);
             return false;
         }
 

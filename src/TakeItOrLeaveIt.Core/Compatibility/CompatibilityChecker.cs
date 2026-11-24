@@ -31,6 +31,25 @@ public sealed class EnvironmentFacts
 
     /// <summary>Raw loader version string, e.g. "0.7.3".</summary>
     public string? LoaderVersion { get; set; }
+
+    /// <summary>Phase 07: the game's own version string (Unity application version), e.g. "0.4.7f12"; null when unknown.</summary>
+    public string? GameVersion { get; set; }
+}
+
+/// <summary>How far a game build has been checked (docs/COMPATIBILITY.md). Never inferred from a successful compile alone.</summary>
+public enum GameBuildSupport
+{
+    /// <summary>The version could not be read.</summary>
+    Unknown,
+
+    /// <summary>
+    /// The build the interop references were exported from: every hook signature is checked by the compiler and the
+    /// automated tests pass. Runtime (in-game) verification is tracked separately in the testing documents.
+    /// </summary>
+    BuildVerified,
+
+    /// <summary>Any other build: not tested. The hooks are still checked at startup and the mod turns itself off if one is missing.</summary>
+    NotTested,
 }
 
 /// <summary>Result of <see cref="CompatibilityChecker.Evaluate"/>.</summary>
@@ -51,6 +70,9 @@ public sealed class CompatibilityReport
     public IReadOnlyList<string> Errors { get; }
 
     public bool AllowsGameplayPatches => Status != CompatibilityStatus.Unsupported;
+
+    /// <summary>Phase 07: what is known about the running game build.</summary>
+    public GameBuildSupport GameBuild { get; internal set; } = GameBuildSupport.Unknown;
 }
 
 /// <summary>
@@ -70,6 +92,31 @@ public static class CompatibilityChecker
     /// interop problems with Schedule I. Not verified locally.
     /// </summary>
     public static readonly LoaderVersion KnownProblematicIl2CppLoader = new(0, 7, 1);
+
+    /// <summary>
+    /// Phase 07: the game builds this source was compiled and tested against. Only these are "Build verified"; nothing is
+    /// claimed for any other build because it compiles.
+    /// </summary>
+    public static readonly IReadOnlyList<string> VerifiedGameVersions = new[] { "0.4.7f12" };
+
+    /// <summary>What is known about <paramref name="gameVersion"/>.</summary>
+    public static GameBuildSupport ClassifyGameVersion(string? gameVersion)
+    {
+        if (string.IsNullOrWhiteSpace(gameVersion))
+        {
+            return GameBuildSupport.Unknown;
+        }
+
+        foreach (var verified in VerifiedGameVersions)
+        {
+            if (string.Equals(verified, gameVersion!.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                return GameBuildSupport.BuildVerified;
+            }
+        }
+
+        return GameBuildSupport.NotTested;
+    }
 
     public static CompatibilityReport Evaluate(EnvironmentFacts facts)
     {
@@ -127,10 +174,20 @@ public static class CompatibilityChecker
             }
         }
 
+        // 4. Game build (Phase 07). An untested build is a warning, not an error: every hook is still checked by its exact
+        // signature at startup and a missing one turns the whole integration off.
+        var build = ClassifyGameVersion(facts.GameVersion);
+        if (build == GameBuildSupport.NotTested)
+        {
+            warnings.Add($"Schedule I {facts.GameVersion!.Trim()} is not a tested build (tested: {string.Join(", ", VerifiedGameVersions)}). " +
+                         "Every game hook is checked at startup; if one is missing the mod turns itself off and the game stays vanilla. " +
+                         "In multiplayer, every player should run the same game build and the same Take It version.");
+        }
+
         var status = errors.Count > 0
             ? CompatibilityStatus.Unsupported
             : warnings.Count > 0 ? CompatibilityStatus.SupportedWithWarnings : CompatibilityStatus.Supported;
 
-        return new CompatibilityReport(status, warnings, errors);
+        return new CompatibilityReport(status, warnings, errors) { GameBuild = build };
     }
 }

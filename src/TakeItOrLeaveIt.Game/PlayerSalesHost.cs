@@ -7,6 +7,7 @@ using TakeItOrLeaveIt.Core.Dealers;
 using TakeItOrLeaveIt.Core.Diagnostics;
 using TakeItOrLeaveIt.Core.Discovery;
 using TakeItOrLeaveIt.Core.Menu;
+using TakeItOrLeaveIt.Core.Multiplayer;
 using TakeItOrLeaveIt.Core.Persistence;
 using TakeItOrLeaveIt.Core.Policies;
 using TakeItOrLeaveIt.Core.Sales;
@@ -32,6 +33,8 @@ internal sealed class PlayerSalesHost
 
     private readonly SalesPersistence _files;
     private bool _offersActive;
+    private bool _hooksApplied;
+    private string? _hooksReason;
     private bool _messagingActive;
     private int _runnerActive;
     private long _sessionId;
@@ -61,6 +64,7 @@ internal sealed class PlayerSalesHost
         {
             PolicyReady = () => Menu()?.PolicyReadyForSales ?? false,
         };
+        Network = new MultiplayerSession(() => Guid.NewGuid().ToString("N").Substring(0, 16), Core.ModInfo.Version, GameVersion(), log);
         Status.Runtime = BuildTarget.Runtime.ToString();
         _catalog.StateChanged += OnCatalogState;
         OnCatalogState(_catalog.State);
@@ -78,6 +82,18 @@ internal sealed class PlayerSalesHost
 
     public PlayerSalesStatus Status { get; } = new();
 
+    /// <summary>Phase 07 session model, host rules publishing and client rules validation.</summary>
+    public MultiplayerSession Network { get; }
+
+    /// <summary>All gameplay hooks are applied (all-or-nothing).</summary>
+    public bool HooksApplied => _hooksApplied;
+
+    /// <summary>Why the hooks are not applied (null when they are).</summary>
+    public string? HooksReason => _hooksReason;
+
+    /// <summary>The active save's identity (host side); null outside a save.</summary>
+    public string? SaveIdentity => _catalog.State.Session.IsNone ? null : _catalog.State.Session.SaveIdentity;
+
     public DealerSalesStatus DealerStatus { get; } = new();
 
     private Func<ModMenuController?> Menu { get; }
@@ -89,6 +105,8 @@ internal sealed class PlayerSalesHost
     public void SetHooks(bool applied, bool dealersApplied, bool offersApplied, bool messagingAvailable, string? unavailableReason)
     {
         _offersActive = applied && offersApplied;
+        _hooksApplied = applied && dealersApplied && offersApplied;
+        _hooksReason = _hooksApplied ? null : unavailableReason ?? "the game hooks are not applied";
         _messagingActive = applied && dealersApplied && messagingAvailable;
         var state = applied ? ComponentStatus.Active : ComponentStatus.Unavailable;
         Status.OfferHook = state;
@@ -112,7 +130,44 @@ internal sealed class PlayerSalesHost
     public IReadOnlyList<string> StatusLines()
     {
         RefreshStatus();
-        return Status.Lines().Concat(DealerStatus.Lines()).Concat(EnhancementLines()).Concat(_files.StatusLines()).ToList();
+        return Network.Describe().Concat(Status.Lines()).Concat(DealerStatus.Lines()).Concat(EnhancementLines()).Concat(_files.StatusLines()).ToList();
+    }
+
+    /// <summary>
+    /// Phase 07: one poll of the session (main thread, every couple of seconds and at contract acceptance). Applies the
+    /// decision to both coordinators (the offer filter and restock texts follow them) and to the menu.
+    /// </summary>
+    public void ApplyNetwork(NetworkReading reading, IRulesChannel? channel)
+    {
+        var menu = Menu();
+        Network.Update(reading, channel, menu?.Saved, menu?.PolicyReadyForSales ?? false, _clock.ElapsedMilliseconds);
+        var decision = Network.Decision;
+        Coordinator.ApplySession(decision);
+        Dealers.ApplySession(decision);
+        menu?.SetHostControlled(Network.MenuControlText, Network.HostRules);
+    }
+
+    /// <summary>A session check failed: manage nothing until the next successful check (fail closed).</summary>
+    public void FailClosed()
+    {
+        Coordinator.ApplySession(SessionDecision.Initial);
+        Dealers.ApplySession(SessionDecision.Initial);
+    }
+
+    private static string? GameVersion()
+    {
+#if GAME_PATCHES
+        try
+        {
+            return UnityEngine.Application.version;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+#else
+        return null;
+#endif
     }
 
     /// <summary>Offer filter, fair pricing, strict dealer fulfilment and restock messages.</summary>
@@ -262,6 +317,11 @@ internal sealed class PlayerSalesHost
     private void Persist()
     {
         var identity = Coordinator.SaveIdentity;
+        if (Network.IsClientRole)
+        {
+            return; // Phase 07: a client never writes sales files (its coordinators manage nothing anyway)
+        }
+
         if (identity is null || (!Coordinator.HasUnsavedOrders && !Dealers.HasUnsavedChanges && !Notifier.HasUnsavedChanges))
         {
             return;
