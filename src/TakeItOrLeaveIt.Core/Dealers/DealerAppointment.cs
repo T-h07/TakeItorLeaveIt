@@ -21,9 +21,6 @@ public enum AppointmentState
     Failed,
     Canceled,
     Expired,
-
-    /// <summary>No longer managed: the game's own exact-product rules handle the rest of this contract.</summary>
-    ReturnedToVanilla,
 }
 
 /// <summary>Mutable state of one managed dealer appointment. Only <see cref="DealerSaleCoordinator"/> changes it.</summary>
@@ -41,8 +38,8 @@ public sealed class DealerAppointment
 
     public string ContractId => Order.ContractId;
 
-    /// <summary>The hired dealer that fulfils it (owner of the reserved stock).</summary>
-    public string DealerId { get; }
+    /// <summary>The hired dealer that fulfils it (owner of the reserved stock). Changes only when the game moves the contract.</summary>
+    public string DealerId { get; internal set; }
 
     /// <summary>Acceptance order; earlier appointments get stock first when several wait.</summary>
     public long Sequence { get; }
@@ -59,11 +56,17 @@ public sealed class DealerAppointment
 
     public string? LastIssue { get; internal set; }
 
+    /// <summary>Handovers that found too little eligible stock and handed over nothing (strict mode).</summary>
+    public int WithheldHandovers { get; internal set; }
+
+    /// <summary>Units still missing at the last reservation attempt (0 when reserved).</summary>
+    public long Shortfall { get; internal set; }
+
     public bool IsTerminal => IsTerminalState(State);
 
     public static bool IsTerminalState(AppointmentState state)
         => state is AppointmentState.Completed or AppointmentState.Failed or AppointmentState.Canceled
-            or AppointmentState.Expired or AppointmentState.ReturnedToVanilla;
+            or AppointmentState.Expired;
 
     /// <summary>Allowed transitions; anything else is refused and leaves the state unchanged.</summary>
     public static bool CanTransition(AppointmentState from, AppointmentState to)
@@ -75,12 +78,11 @@ public sealed class DealerAppointment
 
         return to switch
         {
-            AppointmentState.WaitingForEligibleStock => from is AppointmentState.Reserved,
+            // From Committing only when the removal was rolled back (nothing stays with the customer).
+            AppointmentState.WaitingForEligibleStock => from is AppointmentState.Reserved or AppointmentState.Committing,
             AppointmentState.Reserved => from is AppointmentState.WaitingForEligibleStock,
             AppointmentState.Committing => from is AppointmentState.Reserved,
             AppointmentState.CommitObserved => from is AppointmentState.Committing or AppointmentState.Reserved or AppointmentState.WaitingForEligibleStock,
-            // From Committing only when nothing was removed yet (the removal failed before it started).
-            AppointmentState.ReturnedToVanilla => from is AppointmentState.WaitingForEligibleStock or AppointmentState.Reserved or AppointmentState.Committing,
             _ => true, // any non-terminal state may end with the contract
         };
     }
