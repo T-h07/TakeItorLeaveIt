@@ -204,7 +204,8 @@ public class MenuPersistenceTests
             var loaded = store.Load("save-a");
             Assert.Equal(PolicyLoadStatus.Loaded, loaded.Status);
             Assert.Equal(new[] { "granddaddypurple" }, loaded.Settings!.Categories!["marijuana"].SelectedProducts);
-            Assert.Equal(new[] { "save-a.json" }, Directory.GetFiles(Path.Combine(root, "saves")).Select(Path.GetFileName));
+            // Phase 06: the previous valid file is kept as the known-good backup; no temporary file is left.
+            Assert.Equal(new[] { "save-a.json", "save-a.json.bak" }, Directory.GetFiles(Path.Combine(root, "saves")).Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal));
         }
         finally
         {
@@ -228,7 +229,9 @@ public class MenuPersistenceTests
             Assert.Equal(PolicyLoadStatus.Unreadable, store.Load("save-a").Status);
             store.Save("save-a", PolicyConfiguration.Default.ToSettings());
 
-            Assert.Equal("garbage", File.ReadAllText(store.PathFor("save-a") + ".unreadable.bak"));
+            // Phase 06: kept as <file>.corrupt-<UTC time> (replaces the single, overwritable .unreadable.bak).
+            var copy = Assert.Single(Directory.GetFiles(Path.Combine(root, "saves"), "save-a.json.corrupt-*"));
+            Assert.Equal("garbage", File.ReadAllText(copy));
             Assert.Equal(PolicyLoadStatus.Loaded, store.Load("save-a").Status);
         }
         finally
@@ -295,5 +298,9 @@ public class MenuPersistenceTests
         public void CreateDirectory(string path)
         {
         }
+
+        public IEnumerable<string> ListFiles(string directory, string prefix)
+            => Files.Keys.Where(k => string.Equals(Path.GetDirectoryName(k), directory, StringComparison.Ordinal) &&
+                                     Path.GetFileName(k).StartsWith(prefix, StringComparison.Ordinal)).ToList();
     }
 }

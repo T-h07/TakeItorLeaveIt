@@ -85,6 +85,10 @@ internal sealed class MemoryFileSystem : ISettingsFileSystem
     public void CreateDirectory(string path)
     {
     }
+
+    public System.Collections.Generic.IEnumerable<string> ListFiles(string directory, string prefix)
+        => Files.Keys.Where(k => string.Equals(System.IO.Path.GetDirectoryName(k), directory, StringComparison.Ordinal) &&
+                                 System.IO.Path.GetFileName(k).StartsWith(prefix, StringComparison.Ordinal)).ToList();
 }
 
 /// <summary>
