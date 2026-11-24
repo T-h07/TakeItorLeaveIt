@@ -314,6 +314,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
             LoaderReportedRuntime = LoaderRuntime(),
             DiskDetectedRuntime = detection.Runtime,
             LoaderVersion = MelonLoader.Properties.BuildInfo.Version,
+            GameVersion = UnityInformationHandler.GameVersion,
         });
 
         foreach (var warning in report.Warnings)
@@ -326,7 +327,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
             throw new UnsupportedEnvironmentException(string.Join(" ", report.Errors));
         }
 
-        _log.Info($"Compatibility: {report.Status}.");
+        _log.Info($"Compatibility: {report.Status}; game build: {report.GameBuild}.");
         return report;
     }
 

@@ -1,3 +1,4 @@
+using TakeItOrLeaveIt.Core.Compatibility;
 using TakeItOrLeaveIt.Core.Menu;
 using TakeItOrLeaveIt.Core.Multiplayer;
 using TakeItOrLeaveIt.Core.Persistence;
@@ -176,5 +177,49 @@ public class CompatibilityModeTests
 
         var decoded = PolicySyncCodec.Decode(net.HostValue);
         Assert.Equal(PolicyMode.AnyUnlocked, decoded.Rules!.GetEffectivePolicy(Weed).Mode);
+    }
+
+    [Theory]
+    [InlineData("0.4.7f12", GameBuildSupport.BuildVerified)]
+    [InlineData(" 0.4.7F12 ", GameBuildSupport.BuildVerified)]
+    [InlineData("0.4.8f1", GameBuildSupport.NotTested)]
+    [InlineData(null, GameBuildSupport.Unknown)]
+    [InlineData("", GameBuildSupport.Unknown)]
+    public void P07_F13_only_the_tested_game_build_is_build_verified(string? version, GameBuildSupport expected)
+    {
+        Assert.Equal(expected, CompatibilityChecker.ClassifyGameVersion(version));
+    }
+
+    [Fact]
+    public void P07_F14_an_untested_game_build_warns_but_never_claims_support()
+    {
+        var report = CompatibilityChecker.Evaluate(new EnvironmentFacts
+        {
+            BuildRuntime = Environment.GameRuntime.Il2Cpp,
+            LoaderReportedRuntime = Environment.GameRuntime.Il2Cpp,
+            DiskDetectedRuntime = Environment.GameRuntime.Il2Cpp,
+            LoaderVersion = "0.7.3",
+            GameVersion = "0.5.0f1",
+        });
+
+        Assert.Equal(CompatibilityStatus.SupportedWithWarnings, report.Status);
+        Assert.Equal(GameBuildSupport.NotTested, report.GameBuild);
+        Assert.Contains(report.Warnings, w => w.Contains("not a tested build"));
+    }
+
+    [Fact]
+    public void P07_F15_the_tested_game_build_adds_no_warning()
+    {
+        var report = CompatibilityChecker.Evaluate(new EnvironmentFacts
+        {
+            BuildRuntime = Environment.GameRuntime.Il2Cpp,
+            LoaderReportedRuntime = Environment.GameRuntime.Il2Cpp,
+            DiskDetectedRuntime = Environment.GameRuntime.Il2Cpp,
+            LoaderVersion = "0.7.3",
+            GameVersion = "0.4.7f12",
+        });
+
+        Assert.Equal(CompatibilityStatus.Supported, report.Status);
+        Assert.Equal(GameBuildSupport.BuildVerified, report.GameBuild);
     }
 }
