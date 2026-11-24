@@ -15,7 +15,7 @@ public class SalesRegressionTests
     public void E01_allowed_substitution_scores_like_the_requested_recipe()
     {
         // The customer asked for GDP; OG Kush is allowed. Same quality rating → same match, no recipe penalty.
-        var order = CategoryOrderFactory.Create(Request(ContractA, (Gdp, 5)), Policy(), AllWeedUnlocked()).Order!;
+        var order = CategoryOrderFactory.Create(Request(ContractA, (Gdp, 5)), Policy(), AllWeedUnlocked(), Sales.Flat).Order!;
         var asked = DeliveryValidator.Validate(order, new[] { Item("0", Gdp, 5) }, AllWeedUnlocked());
         var substituted = DeliveryValidator.Validate(order, new[] { Item("0", OgKush, 5) }, AllWeedUnlocked());
 
@@ -45,7 +45,7 @@ public class SalesRegressionTests
     [Fact]
     public void E04_dealer_contracts_are_untouched()
     {
-        var coordinator = new PlayerSaleCoordinator(new InMemoryPolicyProvider(), () => AllWeedUnlocked());
+        var coordinator = new PlayerSaleCoordinator(new InMemoryPolicyProvider(), () => AllWeedUnlocked()) { Prices = Sales.Flat };
         coordinator.SetAuthority(true, 1);
         coordinator.BindSave("save-a", null);
 
@@ -123,7 +123,7 @@ public class SalesRegressionTests
         Assert.True(harness.Menu.Save());
 
         Assert.False(harness.Provider.Current.MixedDeliveries);
-        var order = CategoryOrderFactory.Create(Request(ContractA, (OgKush, 5)), harness.Provider.Current, harness.Catalog.State.Snapshot).Order!;
+        var order = CategoryOrderFactory.Create(Request(ContractA, (OgKush, 5)), harness.Provider.Current, harness.Catalog.State.Snapshot, Sales.Flat).Order!;
         Assert.False(order.MixedDeliveries);
     }
 

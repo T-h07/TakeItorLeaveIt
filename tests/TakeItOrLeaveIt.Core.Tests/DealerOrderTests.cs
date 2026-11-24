@@ -32,9 +32,9 @@ public class DealerOrderTests
     {
         var catalog = AllWeedUnlocked();
 
-        Assert.Equal(OrderOutcome.NotPlayerContract, CategoryOrderFactory.Create(DealerRequest(ContractA, (OgKush, 5)), PolicyConfiguration.Default, catalog).Outcome);
-        Assert.Equal(OrderOutcome.InvalidContract, CategoryOrderFactory.CreateForDealer(Request(ContractA, (OgKush, 5)), PolicyConfiguration.Default, catalog).Outcome);
-        Assert.True(CategoryOrderFactory.CreateForDealer(DealerRequest(ContractA, (OgKush, 5)), PolicyConfiguration.Default, catalog).IsManaged);
+        Assert.Equal(OrderOutcome.NotPlayerContract, CategoryOrderFactory.Create(DealerRequest(ContractA, (OgKush, 5)), PolicyConfiguration.Default, catalog, Sales.Flat).Outcome);
+        Assert.Equal(OrderOutcome.InvalidContract, CategoryOrderFactory.CreateForDealer(Request(ContractA, (OgKush, 5)), PolicyConfiguration.Default, catalog, Sales.Flat).Outcome);
+        Assert.True(CategoryOrderFactory.CreateForDealer(DealerRequest(ContractA, (OgKush, 5)), PolicyConfiguration.Default, catalog, Sales.Flat).IsManaged);
     }
 
     [Fact]

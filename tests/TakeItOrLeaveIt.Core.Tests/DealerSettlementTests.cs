@@ -50,7 +50,7 @@ public class DealerSettlementTests
         Assert.Equal((CommitObservation.First, CommitObservation.Duplicate, CommitObservation.NotManaged), (first, second, late));
         Assert.Equal(2, completed!.CommitCount);
         Assert.Equal(AppointmentState.Completed, completed.State);
-        Assert.False(h.Coordinator.CompleteHandover(ContractA, 5));
+        Assert.Equal(HandoverCompletion.Ignored, h.Coordinator.CompleteHandover(ContractA, 5));
     }
 
     [Fact]

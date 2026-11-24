@@ -88,19 +88,26 @@ public class DealerAppointmentTests
     }
 
     [Fact]
-    public void P04_T28_no_eligible_stock_returns_to_vanilla_before_removal()
+    public void P04_T28_short_stock_withholds_the_handover_and_keeps_waiting()
     {
         var h = new DealerHarness().Stock(Benji, OgKush, 2);
         h.Accept(ContractA, 100f, (OgKush, 5));
 
         var result = h.Handover(ContractA);
 
-        Assert.Equal(HandoverDecision.Vanilla, result.Decision);
+        Assert.Equal(HandoverDecision.Withheld, result.Decision);
         Assert.False(result.Settled);
-        Assert.Null(h.Coordinator.Find(ContractA));
-        Assert.Equal(2, h.UnitsOf(Benji, OgKush)); // vanilla's short delivery was handed back
+        Assert.Empty(result.Items);
+        Assert.Equal(0, h.RemovalCalls); // nothing removed, not even the 2 permitted units (no partial delivery)
+        Assert.Equal(2, h.UnitsOf(Benji, OgKush));
         Assert.Equal(0, h.Payments);
-        Assert.Contains(h.Log.Infos, m => m.Contains("Returned to vanilla"));
+        var appointment = h.Coordinator.Find(ContractA)!;
+        Assert.Equal(AppointmentState.WaitingForEligibleStock, appointment.State);
+        Assert.Equal(1, appointment.WithheldHandovers);
+        Assert.Equal(3, appointment.Shortfall);
+
+        h.Stock(Benji, OgKush, 3);
+        Assert.True(h.Handover(ContractA).Settled); // the next attempt with enough stock completes normally
     }
 
     [Fact]
@@ -133,7 +140,7 @@ public class DealerAppointmentTests
     }
 
     [Fact]
-    public void P04_T31_repeated_stock_loss_returns_to_vanilla()
+    public void P04_T31_repeated_stock_loss_keeps_the_appointment_managed()
     {
         var h = new DealerHarness();
         h.Accept(ContractA, 100f, (OgKush, 5));
@@ -145,22 +152,28 @@ public class DealerAppointmentTests
             h.Tick(Benji);
         }
 
-        Assert.Null(h.Coordinator.Find(ContractA));
+        var appointment = h.Coordinator.Find(ContractA)!;
+        Assert.Equal(AppointmentState.WaitingForEligibleStock, appointment.State);
+        Assert.Equal(DealerSaleCoordinator.MaxInvalidations + 1, appointment.Invalidations);
         Assert.Equal(0, h.Coordinator.Ledger.ActiveCount);
+        Assert.Contains("lost", h.Coordinator.LastError);
     }
 
     [Fact]
-    public void P04_T32_contract_moved_to_another_dealer_returns_to_vanilla()
+    public void P04_T32_contract_moved_to_another_dealer_follows_the_new_dealer()
     {
-        var h = new DealerHarness().Stock(Benji, OgKush, 10).Stock(Molly, OgKush, 10);
+        var h = new DealerHarness().Stock(Benji, OgKush, 10).Stock(Molly, SourDiesel, 10);
         h.Accept(ContractA, 100f, (OgKush, 5));
 
         h.Reassign(ContractA, Molly);
         var result = h.Handover(ContractA);
 
-        Assert.Equal(HandoverDecision.Vanilla, result.Decision);
+        Assert.Equal(HandoverDecision.Fulfil, result.Decision);
+        Assert.True(result.Settled);
         Assert.Equal(10, h.UnitsOf(Benji, OgKush)); // Benji's hold released, nothing taken from him
+        Assert.Equal(5, h.UnitsOf(Molly, SourDiesel)); // Molly delivered a permitted product from her own stock
         Assert.Equal(0, h.Coordinator.Ledger.HeldUnitsTotal);
+        Assert.Contains(h.Log.Infos, m => m.Contains("moved from dealer"));
     }
 
     [Theory]

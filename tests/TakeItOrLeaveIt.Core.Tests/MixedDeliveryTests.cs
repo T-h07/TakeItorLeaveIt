@@ -17,7 +17,7 @@ public class MixedDeliveryTests
 
     /// <summary>Order created through the real factory under <paramref name="policy"/> (null when it stays vanilla).</summary>
     private static CategoryOrder? Accept(PolicyConfiguration policy, bool mixed = true)
-        => CategoryOrderFactory.Create(Request(ContractA, (OgKush, 5)), policy.WithMixedDeliveries(mixed), AllWeedUnlocked()).Order;
+        => CategoryOrderFactory.Create(Request(ContractA, (OgKush, 5)), policy.WithMixedDeliveries(mixed), AllWeedUnlocked(), Sales.Flat).Order;
 
     [Fact]
     public void B01_five_gdp_accepted()

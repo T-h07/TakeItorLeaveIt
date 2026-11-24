@@ -45,7 +45,7 @@ internal sealed class DealerHarness
     {
         Policies = new InMemoryPolicyProvider(policy ?? PolicyConfiguration.Default);
         Catalog = catalog ?? AllWeedUnlocked();
-        Coordinator = new DealerSaleCoordinator(Policies, () => Catalog, Log);
+        Coordinator = new DealerSaleCoordinator(Policies, () => Catalog, Log) { Prices = Sales.Flat };
         Coordinator.SetAuthority(isServer: true, playerCount: 1);
         Coordinator.BindSave("save-test", null);
     }
@@ -69,6 +69,12 @@ internal sealed class DealerHarness
     public int Completions { get; private set; }
 
     public int RemovalCalls { get; private set; }
+
+    /// <summary>Simulates the game's removal returning this many units fewer than asked (strict rollback tests).</summary>
+    public int RemovalShortfall { get; set; }
+
+    /// <summary>Handovers where the customer received nothing because the mod withheld the delivery.</summary>
+    public int WithheldHandovers { get; private set; }
 
     /// <summary>Every unit that left a dealer's inventory through a handover removal.</summary>
     public long UnitsRemoved { get; private set; }
@@ -124,12 +130,13 @@ internal sealed class DealerHarness
             return (false, empty, HandoverDecision.Vanilla);
         }
 
-        // D1: Dealer.RemoveContractItems.
+        // D1: Dealer.RemoveContractItems (strict: a managed appointment never runs the exact-product removal).
         var items = new List<(ProductKey Product, int Units)>();
         var plan = Coordinator.Find(contract) is null
             ? null
             : Coordinator.PrepareHandover(contract, StockOf(c.Dealer));
-        var decision = plan?.Decision ?? HandoverDecision.Vanilla;
+        var decision = plan?.Decision
+                       ?? (Coordinator.BlocksUnmanaged(Sales.DealerRequest(contract, c.Lines), out _) ? HandoverDecision.Withheld : HandoverDecision.Vanilla);
         switch (decision)
         {
             case HandoverDecision.Vanilla:
@@ -140,12 +147,28 @@ internal sealed class DealerHarness
 
                 break;
             case HandoverDecision.Fulfil:
+                var shortBy = RemovalShortfall;
                 foreach (var line in plan!.Lines)
                 {
-                    items.AddRange(Remove(c.Dealer, line.Product, line.Units, countAsHandover: true));
+                    var ask = Math.Max(0, line.Units - shortBy);
+                    shortBy -= line.Units - ask;
+                    items.AddRange(Remove(c.Dealer, line.Product, ask, countAsHandover: true));
                 }
 
-                Coordinator.CompleteHandover(contract, items.Sum(i => i.Units));
+                if (Coordinator.CompleteHandover(contract, items.Sum(i => i.Units)) != HandoverCompletion.Committed)
+                {
+                    foreach (var item in items)
+                    {
+                        Stock(c.Dealer, item.Product, item.Units); // AddItemToInventory: rolled back, nothing handed over
+                    }
+
+                    items.Clear();
+                    WithheldHandovers++;
+                }
+
+                break;
+            default:
+                WithheldHandovers++;
                 break;
         }
 

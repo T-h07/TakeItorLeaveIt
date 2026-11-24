@@ -70,7 +70,7 @@ public class ActiveContractTests
     {
         var fs = new MemoryFileSystem();
         var store = new ActiveOrderStore(Root, fs);
-        var coordinator = new PlayerSaleCoordinator(new InMemoryPolicyProvider(), () => AllWeedUnlocked());
+        var coordinator = new PlayerSaleCoordinator(new InMemoryPolicyProvider(), () => AllWeedUnlocked()) { Prices = Sales.Flat };
         coordinator.SetAuthority(true, 1);
 
         coordinator.BindSave("save-a", null);
@@ -106,7 +106,7 @@ public class ActiveContractTests
     [Fact]
     public void D07_complete_cancel_expire_and_vanished_contracts_are_cleaned_up()
     {
-        var coordinator = new PlayerSaleCoordinator(new InMemoryPolicyProvider(), () => AllWeedUnlocked());
+        var coordinator = new PlayerSaleCoordinator(new InMemoryPolicyProvider(), () => AllWeedUnlocked()) { Prices = Sales.Flat };
         coordinator.SetAuthority(true, 1);
         coordinator.BindSave("save-a", null);
         var ids = new[] { "c1", "c2", "c3", "c4", "c5" };
@@ -145,7 +145,7 @@ public class ActiveContractTests
             "42]}";
         var partial = store.Load("save-a");
         Assert.Equal(new[] { "ok" }, partial.Orders.Select(o => o.Order.ContractId));
-        Assert.Equal(5, partial.Issues.Count);
+        Assert.Equal(6, partial.Issues.Count); // 5 broken entries + the legacy (unpriced) note for "ok"
 
         fs.Files[store.PathFor("save-a")] = "{\"schemaVersion\":99,\"orders\":[]}";
         var future = store.Load("save-a");
@@ -156,7 +156,7 @@ public class ActiveContractTests
     [Fact]
     public void D09_snapshot_is_taken_once_even_if_acceptance_is_reported_twice()
     {
-        var coordinator = new PlayerSaleCoordinator(new InMemoryPolicyProvider(), () => AllWeedUnlocked());
+        var coordinator = new PlayerSaleCoordinator(new InMemoryPolicyProvider(), () => AllWeedUnlocked()) { Prices = Sales.Flat };
         coordinator.SetAuthority(true, 1);
         coordinator.BindSave("save-a", null);
         var first = coordinator.OnContractAccepted(Request(ContractA, (OgKush, 5))).Order;
@@ -190,7 +190,7 @@ public class ActiveContractTests
     public void D11_unsupported_session_leaves_everything_vanilla()
     {
         var log = new RecordingLog();
-        var coordinator = new PlayerSaleCoordinator(new InMemoryPolicyProvider(), () => AllWeedUnlocked(), log);
+        var coordinator = new PlayerSaleCoordinator(new InMemoryPolicyProvider(), () => AllWeedUnlocked(), log) { Prices = Sales.Flat };
         coordinator.BindSave("save-a", new List<(CategoryOrder, SaleState)> { (Order(5), SaleState.Pending) });
 
         coordinator.SetAuthority(isServer: true, playerCount: 2);
@@ -208,7 +208,7 @@ public class ActiveContractTests
     [Fact]
     public void D12_no_save_bound_means_no_new_orders()
     {
-        var coordinator = new PlayerSaleCoordinator(new InMemoryPolicyProvider(), () => AllWeedUnlocked());
+        var coordinator = new PlayerSaleCoordinator(new InMemoryPolicyProvider(), () => AllWeedUnlocked()) { Prices = Sales.Flat };
         coordinator.SetAuthority(true, 1);
 
         Assert.False(coordinator.OnContractAccepted(Request(ContractA, (OgKush, 5))).IsManaged);
@@ -218,7 +218,7 @@ public class ActiveContractTests
     public void D13_unloaded_or_unreadable_settings_keep_new_contracts_vanilla()
     {
         var ready = false;
-        var coordinator = new PlayerSaleCoordinator(new InMemoryPolicyProvider(), () => AllWeedUnlocked()) { PolicyReady = () => ready };
+        var coordinator = new PlayerSaleCoordinator(new InMemoryPolicyProvider(), () => AllWeedUnlocked()) { PolicyReady = () => ready, Prices = Sales.Flat };
         coordinator.SetAuthority(true, 1);
         coordinator.BindSave("save-a", null);
 
