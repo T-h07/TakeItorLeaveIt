@@ -109,9 +109,9 @@ Host-authoritative player sales cannot be advertised under any option.
 Mono builds load the Core and discovery only: no Mono game references are exported, so no sales hooks and no phone
 app. **Recommendation:** v1.0.0 ships the IL2CPP package only; Mono is documented as unsupported (B-12).
 
-## 7. License (owner decision, B-06)
+## 7. License (B-06, resolved)
 
-No `LICENSE` file exists and README says the license is undecided. Options:
+**Decision (owner, 2026-11-24): MIT.** `LICENSE` added. The options that were considered:
 
 | License | Effect |
 | --- | --- |
@@ -129,5 +129,5 @@ FishNet or Unity, none of which is bundled.
    returns `Latest.log`, screenshots and PASS/FAIL per ID.
 2. Failures → blockers with IDs, fixes with regression tests, new `rc.N`, targeted retest.
 3. Batches 02–11 in order; B-02/B-03 decided after Batch 07, B-05 after Batch 09.
-4. Owner decisions: B-04 (co-op scope), B-06 (license), B-12 (Mono), B-11/B-13 (limitations).
+4. Owner decisions: B-04 (co-op scope), B-12 (Mono), B-11/B-13 (limitations).
 5. Docs, changelog, release notes, checklist; final RC; approval; promotion.

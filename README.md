@@ -142,4 +142,6 @@ See [docs/BUILDING.md](docs/BUILDING.md) (output locations, optional auto-deploy
 
 ## License
 
-To be decided before public distribution.
+[MIT](LICENSE) © 2026 Taulant Haxhiu. The license covers this mod's own code only. Schedule I, MelonLoader,
+S1API, Steamworks, FishNet and Unity belong to their respective owners; none of them is included in this repository
+or in the mod package.
