@@ -1,8 +1,8 @@
 # Take It Or Leave It — Development Roadmap
 
 > **Project:** Schedule I sales-overhaul mod  
-> **Status:** Phases 00-03 merged (Phase 00 verified in game). Phase 04 (dealer sales + critical enhancements) implementation complete, in-game acceptance not yet tested  
-> **Target release:** v1.0.0  
+> **Status:** Phases 00–07 merged; Phase 08 release source prepared, owner reports RC2 working in-game; final v1.0.0 package and full acceptance evidence pending  
+> **Release target:** v1.0.0 (Windows IL2CPP single-player; co-op experimental)  
 > **Development branch:** `develop`  
 > **Goal:** Make selling simpler while giving the player precise control over **what can be sold**.
 

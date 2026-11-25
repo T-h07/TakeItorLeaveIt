@@ -2,7 +2,8 @@ name: build
 
 on:
   push:
-    branches: [develop, "feature/**"]
+    branches: [develop, release, main, "feature/**"]
+    tags: ["v*"]
   pull_request:
     branches: [develop, release, main]
   workflow_dispatch:

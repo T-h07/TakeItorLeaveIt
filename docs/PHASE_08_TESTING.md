@@ -1,5 +1,8 @@
 # Phase 08 — master acceptance tracker
 
+**2026-11-25 owner report:** owner states that the mod works perfectly in their in-game testing and requests the first public release. The specific scenario IDs, game logs, cash/stock evidence and co-op coverage were not provided, so the 270-scenario tracker remains unaltered. Co-op is excluded from the official v1.0.0 support guarantee; Mono gameplay is excluded. B-03 (dealer quality-lot mismatch in concurrent mixed-quality appointments) remains an explicitly disclosed unresolved risk, not a verified fix. The final reference-enabled 1.0.0 archive still needs to be rebuilt and tested after changing the embedded version.
+
+
 > **Every physical scenario is NOT TESTED until the owner reports a result from the game.** Results are recorded
 > exactly as reported, with the RC id and evidence path. A FAIL is never overwritten by a later PASS: the retest gets
 > its own entry in the *Retest* column and the earlier result is marked *superseded by rc.N*.
