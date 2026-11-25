@@ -2,7 +2,7 @@
 
 All notable project changes are documented here.
 
-## [1.0.0] — First public release preparation
+## [1.0.0] — 2026-11-25 — First public release
 
 ### Added
 - Configurable category-based customer and hired-dealer sales using legitimately unlocked products.
@@ -33,4 +33,4 @@ All notable project changes are documented here.
 - Only the target game build is compiled against and inspected; other versions are not supported.
 
 ### Verification note
-The owner reports the v1.0.0-rc.2 build working in-game, but the 270-scenario historical acceptance table is not individually marked PASS. The final 1.0.0 binary must be rebuilt with local game references, hash-verified and smoke-tested before its asset is published.
+The owner reported the v1.0.0-rc.2 build working in-game and smoke-tested the final v1.0.0 ZIP (SHA256 `A0D56D8772917F81ED73057CBE44ADF2D78804F71B5DD2D905316600E2D7E89D`) before publication. The 270-scenario historical acceptance table is not individually marked PASS.

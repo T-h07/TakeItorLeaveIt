@@ -1,8 +1,9 @@
-# Multiplayer (Phase 07)
+# Multiplayer (experimental in v1.0.0)
 
 > **Not tested in a real co-op game.** The session model, rules sharing and co-op sale behaviour are covered by
 > automated simulation tests only (suites A–F and S, [PHASE_07_TESTING.md](PHASE_07_TESTING.md)). Simulated
-> results are **not** multiplayer verification; real co-op testing is Phase 08. Call-graph evidence:
+> results are **not** multiplayer verification; no real co-op testing has been done, so co-op is experimental and
+> outside the official v1.0.0 support scope. Call-graph evidence:
 > [PHASE_07_NETWORK_ANALYSIS.md](PHASE_07_NETWORK_ANALYSIS.md).
 
 ## 1. In one paragraph
@@ -99,7 +100,7 @@ snapshots, no dealer state and no settings while in someone else's game.
 See [COMPATIBILITY.md](COMPATIBILITY.md) §3 (A both modded, B host only, C client only, D different Take It
 versions, E different game builds).
 
-## 9. Not yet known (Phase 08)
+## 9. Not yet known (no real co-op test yet)
 
 - Whether Steam lobby data reaches clients as expected in this game (ownership, propagation delay, join in
   progress).

@@ -1,7 +1,7 @@
 # Take It Or Leave It — Development Roadmap
 
 > **Project:** Schedule I sales-overhaul mod  
-> **Status:** Phases 00–07 merged; Phase 08 release source prepared, owner reports RC2 working in-game; final v1.0.0 package and full acceptance evidence pending  
+> **Status:** v1.0.0 released 2026-11-25 (Phases 00–08 complete). The final ZIP was smoke-tested in game by the owner; the full historical scenario table is not individually marked PASS  
 > **Release target:** v1.0.0 (Windows IL2CPP single-player; co-op experimental)  
 > **Development branch:** `develop`  
 > **Goal:** Make selling simpler while giving the player precise control over **what can be sold**.
@@ -245,7 +245,7 @@ applied silently) when settings are damaged; game-side dealer caches reset per s
 **Status (implemented, simulation-tested only):** host-only authority through an explicit session model, the
 host's saved rules shared read-only over Steam lobby data (versioned, hashed, revisioned), idempotent dealer
 completion with a product/quality-tier removal check, game build classification. A client's own handover keeps
-the game's exact-product rule (blocker documented). Real co-op testing moves to Phase 08:
+the game's exact-product rule (blocker documented). Real co-op testing has not been done, so co-op ships as experimental in v1.0.0:
 [MULTIPLAYER.md](docs/MULTIPLAYER.md), [COMPATIBILITY.md](docs/COMPATIBILITY.md),
 [PHASE_07_NETWORK_ANALYSIS.md](docs/PHASE_07_NETWORK_ANALYSIS.md), [PHASE_07_TESTING.md](docs/PHASE_07_TESTING.md).
 
@@ -266,6 +266,9 @@ the game's exact-product rule (blocker documented). Real co-op testing moves to 
 **In-game example:** Someone downloads v1.0.0, installs it, opens the Take It Or Leave It menu, chooses their permitted products, and both player and dealer transactions follow the selected rules without any manual file edits.
 
 **We call this done when:** The test checklist passes on the documented game build, the release artifact is verified, and `main` matches the approved tagged release.
+
+**Status:** v1.0.0 built from the release source with game references, verified, smoke-tested in game by the owner and
+published. Checklist: [RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md); open risks: [PHASE_08_RELEASE_BLOCKERS.md](docs/PHASE_08_RELEASE_BLOCKERS.md).
 
 ---
 
