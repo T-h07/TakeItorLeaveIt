@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using TakeItOrLeaveIt.Core.Policies;
+using TakeItOrLeaveIt.Core.Diagnostics;
 
 namespace TakeItOrLeaveIt.Core.Persistence;
 
@@ -81,13 +82,60 @@ public interface ISettingsFileSystem
     IEnumerable<string> ListFiles(string directory, string prefix);
 }
 
+/// <summary>
+/// Phase 08: a document is larger than any file the mod writes could be. It is not read (memory), not parsed and not
+/// replaced: like any other I/O error the file is reported as unreadable and kept as it is.
+/// </summary>
+public sealed class DocumentTooLargeException : IOException
+{
+    public DocumentTooLargeException(string fileName, long length, long limit)
+        : base($"{fileName} is {length} bytes; documents larger than {limit} bytes are not read.")
+    {
+        Length = length;
+        Limit = limit;
+    }
+
+    public long Length { get; }
+
+    public long Limit { get; }
+}
+
 public sealed class PhysicalSettingsFileSystem : ISettingsFileSystem
 {
+    /// <summary>
+    /// Upper bound for one settings or runtime document. The largest real document (every product of a long save in
+    /// a list, plus overrides) is a few hundred kilobytes; 4 MiB leaves a wide margin.
+    /// </summary>
+    public const long DefaultMaxDocumentBytes = 4L * 1024 * 1024;
+
     public static readonly PhysicalSettingsFileSystem Instance = new();
+
+    public PhysicalSettingsFileSystem(long maxDocumentBytes = DefaultMaxDocumentBytes)
+    {
+        if (maxDocumentBytes < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxDocumentBytes));
+        }
+
+        MaxDocumentBytes = maxDocumentBytes;
+    }
+
+    public long MaxDocumentBytes { get; }
 
     public bool FileExists(string path) => File.Exists(path);
 
-    public string ReadAllText(string path) => File.ReadAllText(path, Encoding.UTF8);
+    /// <summary>Reads a UTF-8 document; throws <see cref="DocumentTooLargeException"/> before reading an oversized file.</summary>
+    public string ReadAllText(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (stream.Length > MaxDocumentBytes)
+        {
+            throw new DocumentTooLargeException(Path.GetFileName(path), stream.Length, MaxDocumentBytes);
+        }
+
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        return reader.ReadToEnd();
+    }
 
     public void WriteAllText(string path, string contents)
     {
@@ -171,7 +219,7 @@ public sealed class JsonPolicyStore : IPolicyStore
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // The file may be fine (locked by another program): no recovery is offered, nothing is replaced.
-            return new PolicyLoadResult(PolicyLoadStatus.Unreadable, null, $"Settings file could not be opened ({ex.GetType().Name}: {ex.Message}).");
+            return new PolicyLoadResult(PolicyLoadStatus.Unreadable, null, $"Settings file could not be opened ({LogText.Describe(ex)}).");
         }
 
         var check = PolicySettingsJson.Classify(text, saveIdentity);
@@ -469,7 +517,7 @@ public static class PolicySettingsJson
         }
         catch (Exception ex) when (ex is FormatException or InvalidDataException)
         {
-            return DocumentCheck.Unreadable(ex.Message);
+            return DocumentCheck.Unreadable(LogText.Clip(ex.Message, 200));
         }
 
         if (settings.SchemaVersion > PolicyConfiguration.CurrentSchemaVersion)

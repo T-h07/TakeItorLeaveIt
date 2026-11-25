@@ -8,6 +8,7 @@ using TakeItOrLeaveIt.Core.Policies;
 using TakeItOrLeaveIt.Core.Sales;
 using TakeItOrLeaveIt.Game.Patching;
 using CandidateList = Il2CppSystem.Collections.Generic.List<Il2CppSystem.Tuple<Il2CppScheduleOne.Product.ProductDefinition, int>>;
+using TakeItOrLeaveIt.Core.Diagnostics;
 
 namespace TakeItOrLeaveIt.Game.Sales;
 
@@ -68,7 +69,7 @@ internal sealed class OfferPatches : IPatchModule
         }
         catch (Exception ex)
         {
-            GameSales.Once("offer-filter-error", $"Customer offer filter failed for one offer; that offer used the game's own candidates. {ex.GetType().Name}: {ex.Message}", warning: true);
+            GameSales.Once("offer-filter-error", $"Customer offer filter failed for one offer; that offer used the game's own candidates. {LogText.Describe(ex)}", warning: true);
         }
     }
 }

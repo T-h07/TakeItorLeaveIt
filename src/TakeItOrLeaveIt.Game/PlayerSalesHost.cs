@@ -407,5 +407,10 @@ internal sealed class PlayerSalesHost
         DealerStatus.Reservations = Dealers.Ledger.ActiveCount;
         DealerStatus.ReservedUnits = Dealers.Ledger.HeldUnitsTotal;
         DealerStatus.LastError = Dealers.LastError;
+#if GAME_PATCHES
+        DealerStatus.PendingReturnItems = Sales.GameDealers.PendingReturns.Count;
+        DealerStatus.PendingReturnUnits = Sales.GameDealers.PendingReturns.Units;
+        DealerStatus.AbandonedReturns = Sales.GameDealers.PendingReturns.AbandonedTotal;
+#endif
     }
 }

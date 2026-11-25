@@ -3,6 +3,7 @@ using Il2CppScheduleOne;
 using Il2CppScheduleOne.Product;
 using TakeItOrLeaveIt.Core.Products;
 using TakeItOrLeaveIt.Core.Sales;
+using TakeItOrLeaveIt.Core.Diagnostics;
 
 namespace TakeItOrLeaveIt.Game.Sales;
 
@@ -32,7 +33,7 @@ internal static class GamePrices
         }
         catch (Exception ex)
         {
-            GameSales.Once("price-read-error", $"Could not read a product price; that product is not used as a substitute. {ex.GetType().Name}: {ex.Message}", warning: true);
+            GameSales.Once("price-read-error", $"Could not read a product price; that product is not used as a substitute. {LogText.Describe(ex)}", warning: true);
             return null;
         }
     }

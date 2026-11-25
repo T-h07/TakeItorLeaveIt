@@ -10,7 +10,7 @@ public class ModInfoTests
     {
         Assert.Equal("TakeItOrLeaveIt", ModInfo.Name);
         Assert.Equal("T-h07", ModInfo.Author);
-        Assert.Equal("0.0.1-dev", ModInfo.Version);
+        Assert.Equal("1.0.0", ModInfo.Version);
     }
 
     [Fact]
@@ -26,6 +26,6 @@ public class ModInfoTests
     [Fact]
     public void Initialized_message_contains_version()
     {
-        Assert.Equal("Version 0.0.1-dev initialized successfully.", ModInfo.InitializedMessage);
+        Assert.Equal("Version 1.0.0 initialized successfully.", ModInfo.InitializedMessage);
     }
 }

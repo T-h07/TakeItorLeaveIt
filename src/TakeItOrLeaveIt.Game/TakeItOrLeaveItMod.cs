@@ -77,7 +77,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
                 }
 
                 _log.Info(ModInfo.InitializedMessage);
-                _log.Info($"Phase 05: player sales {(_sales?.Status.HooksActive == true ? "hooks active" : "unavailable in this build")}; " +
+                _log.Info($"Sales hooks: player sales {(_sales?.Status.HooksActive == true ? "hooks active" : "unavailable in this build")}; " +
                           $"dealer sales {(_sales?.DealerStatus.HooksActive == true ? "hooks active" : "unavailable in this build")}.");
                 break;
             case StartupOutcome.UnsupportedEnvironment:
@@ -94,7 +94,12 @@ public sealed class TakeItOrLeaveItMod : MelonMod
         // One line per scene load (not per frame): confirms the mod survives into gameplay scenes.
         if (IsOperational)
         {
-            _log.Info($"Scene loaded: '{sceneName}' (index {buildIndex}).");
+            _log.Info($"Scene loaded: '{LogText.Clip(sceneName)}' (index {buildIndex}).");
+#if GAME_PATCHES
+            // Phase 08: native addresses cached as identities are only valid while their objects live.
+            Sales.GameDealers.ForgetPointers();
+            Sales.GameSales.InvalidateCache();
+#endif
             _discovery?.PollNow();
         }
     }
@@ -144,7 +149,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
         catch (Exception ex)
         {
             _phoneMenuDisabled = true;
-            _log.Error($"Phone menu disabled after an error (is a compatible S1API installed?): {ex}");
+            _log.Error("Phone menu disabled after an error (is a compatible S1API installed?).", ex);
         }
 #else
         if (!_phoneMenuChecked)
@@ -174,7 +179,7 @@ public sealed class TakeItOrLeaveItMod : MelonMod
         catch (Exception ex)
         {
             _salesDisabled = true;
-            _log.Error($"Player sales housekeeping stopped after an error (hooks stay as they are; restart the game to retry): {ex}");
+            _log.Error("Player sales housekeeping stopped after an error (hooks stay as they are; restart the game to retry).", ex);
         }
     }
 

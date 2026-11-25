@@ -1,56 +1,35 @@
-# Compatibility (Phase 07)
+# Compatibility — v1.0.0
 
-> Compiling against a build is **not** support. A combination is listed as supported only after it was
-> tested; everything else is labelled honestly below.
+**Supported release target:** Windows, Schedule I **v0.4.7f12 IL2CPP**, single-player, with MelonLoader 0.7.3 and S1API Forked 3.2.3 for the phone menu.
 
-## 1. Labels
+The owner reported the Phase 08 RC2 build working in-game. This does **not** mean that every historical acceptance case or supported-matrix combination was individually exercised. Only the baseline loading (Phase 00) has earlier detailed logged physical verification; the remainder of the original acceptance tracker is still awaiting scenario-specific reports.
 
-| Label | Meaning |
+| Component or arrangement | Evidence / claim |
 | --- | --- |
-| **Build verified** | The mod compiles against this build's own interop assemblies and every hook signature was checked against them |
-| **Automated tests verified** | Covered by the xUnit suites (no game running) |
-| **Runtime verified** | Observed working in the running game |
-| **Unsupported** | Known not to work, or deliberately switched off |
-| **Not tested** | Unknown; may work, no claim is made |
+| Schedule I v0.4.7f12, IL2CPP, Windows — single-player | Targeted build, compiled with local references; owner reports the mod works in-game |
+| MelonLoader 0.7.3 | Recommended; build verified and Phase 00 loading verified |
+| S1API Forked 3.2.3 | Required for the seven-screen Take It phone app; compiled against |
+| Other Schedule I versions | Not tested or guaranteed; game changes may invalidate hooks |
+| Mono alternate branch | Compiles a reduced build but **no** phone app or player/dealer sales hooks; not included as a supported gameplay release |
+| CI-no-game-hooks archive | Core/loader-only test artifact, **not installable as the functional sales mod** |
+| Multiplayer — same mod on host/client | Simulation-tested only; not a supported v1.0.0 gameplay guarantee |
+| Multiplayer — host-only/client-only mixed install | Not verified in game |
+| Different game/mod protocol versions in co-op | Not supported |
 
-## 2. Matrix
+## Game startup protection
 
-| Item | Status |
-| --- | --- |
-| Schedule I v0.4.7f12, IL2CPP (default branch) — mod loading | Runtime verified (Phase 00) |
-| Schedule I v0.4.7f12, IL2CPP — sales, dealers, menu (Phases 03–06) | Build verified, Automated tests verified; runtime: Not tested (Phase 08) |
-| Schedule I v0.4.7f12, IL2CPP — multiplayer (Phase 07) | Build verified, Automated tests verified (simulation only); runtime: **Not tested** (Phase 08) |
-| Any other Schedule I build | Not tested (warns at startup) |
-| Mono (`alternate` beta) | Build verified for loading and the rule engine only; no sales hooks, no menu → sales Unsupported |
-| CI build (no game references) | Loading and rule engine only; sales Unsupported (status report says so) |
-| MelonLoader 0.7.3 | Build verified, Runtime verified (Phase 00) |
-| MelonLoader 0.7.0 / 0.7.2 | Not tested (accepted with a warning) |
-| MelonLoader 0.7.1 on IL2CPP | Unsupported (known problematic; warning) |
-| MelonLoader below 0.7.0 | Unsupported (refused) |
-| S1API 3.2.3 (phone menu) | Build verified; runtime Not tested |
-| Host and client on different game builds | Unsupported (diagnostics say "Not a supported combination") |
-| Host and client on different Take It versions, same rules protocol | Not tested (rules shown with a note) |
-| Host and client on different rules protocols | Unsupported (client shows no rules, asks to update) |
+The mod checks loader/runtime facts, game version and exact Harmony target signatures. Missing interdependent patch targets cause a patch rollback. For previously accepted managed contracts, Phase 08 hardened exception/authority failure paths to refuse unsafe handovers instead of silently falling back to permissive vanilla behavior.
 
-## 3. Co-op modes
+A game build outside the verified target may produce a warning but can still pass signature checks; **a warning is not a promise of compatibility**.
 
-| Mode | Setup | Behaviour | Automated tests |
-| --- | --- | --- | --- |
-| **A** | Host and client both have the same Take It | Host runs Take It; client shows host rules read-only | F01, E01, suites C/D |
-| **B** | Host has Take It, client does not | Host-side features work (offers, dealers, host's own handovers); the client plays vanilla | F02, C-suite |
-| **C** | Client has Take It, host does not | Client waits 30 s, then "The host does not share Take It rules. Vanilla rules apply."; nothing managed | F03, E10 |
-| **D** | Different Take It versions | Same protocol: rules shown with "Different Take It versions" in Diagnostics. Other protocol: CompatibilityFailure, no rules | F04, F05 |
-| **E** | Different game builds | Rules still shown, Diagnostics say "Not a supported combination" | F06 |
+## Multiplayer limitation
 
-All rows are simulation results; none is runtime verified.
+The game evaluates client-originated handovers on the client's machine. The host receives a separate settlement RPC with values computed by the client, and the mod cannot independently correlate/validate the full contract and handed-over items at that boundary using the verified stable hooks. Co-op therefore remains **experimental / excluded from the official v1.0.0 support guarantee**, not fully host-authoritative player sales.
 
-## 4. Startup checks
+Host-side offers, dealer appointments, Steam lobby rule display and reconnect protection are implemented, but require actual multiplayer acceptance before being advertised as supported. Dealer texts in co-op reach the host only. No host migration support.
 
-- `CompatibilityChecker` evaluates the runtime (build vs loader vs disk), the MelonLoader version and, since
-  Phase 07, the **game build** (`Application.version`): `0.4.7f12` is *Build verified*, anything else is
-  *Not tested* and adds a warning; no version read is *Unknown*. The log line is
-  `Compatibility: <status>; game build: <BuildVerified|NotTested|Unknown>.`
-- An untested build is not refused: `PatchManager` still resolves every hook by its exact signature at startup,
-  and if one is missing it removes every Take It patch and the game runs vanilla ("Unavailable" in the status
-  report). A client whose hooks failed is still read-only (it never manages anything).
-- Generated RPC methods (names with a hash suffix) are never patched, so a hash change cannot break a hook.
+## Inventory edge case
+
+A hired dealer's game removal API accepts a **minimum quality**, not an exact reserved quality lot. If multiple appointments compete for mixed-quality stock, a higher-quality lot may be taken from another appointment's reservation. This is an outstanding behavior risk pending the documented quality-lot physical tests; avoid such arrangements until verified.
+
+References: [Release checklist](RELEASE_CHECKLIST.md), [Multiplayer](MULTIPLAYER.md), [Release blockers](PHASE_08_RELEASE_BLOCKERS.md), [Phase 08 testing](PHASE_08_TESTING.md).

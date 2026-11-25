@@ -214,7 +214,7 @@ public static class MiniJson
                 var value = ReadValue(depth + 1);
                 if (map.ContainsKey(key))
                 {
-                    throw Error($"Duplicate property '{key}'");
+                    throw Error($"Duplicate property '{TakeItOrLeaveIt.Core.Diagnostics.LogText.Clip(key, 64)}'");
                 }
 
                 map[key] = value;

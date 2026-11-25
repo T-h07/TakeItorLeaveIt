@@ -7,6 +7,7 @@ using Il2CppScheduleOne.ItemFramework;
 using Il2CppScheduleOne.Product;
 using Il2CppScheduleOne.Quests;
 using Il2CppScheduleOne.UI.Handover;
+using TakeItOrLeaveIt.Core.Diagnostics;
 using TakeItOrLeaveIt.Core.Sales;
 using TakeItOrLeaveIt.Game.Patching;
 using ItemList = Il2CppSystem.Collections.Generic.List<Il2CppScheduleOne.ItemFramework.ItemInstance>;
@@ -99,7 +100,7 @@ internal sealed class PlayerSalesPatches : IPatchModule
         }
         catch (Exception ex)
         {
-            GameSales.Once("accept-error", $"Could not read an accepted contract; it uses vanilla rules. {ex.GetType().Name}: {ex.Message}", warning: true);
+            GameSales.Once("accept-error", $"Could not read an accepted contract; it uses vanilla rules. {LogText.Describe(ex)}", warning: true);
         }
     }
 
@@ -130,30 +131,55 @@ internal sealed class PlayerSalesPatches : IPatchModule
         => Match(__instance, items is null ? null : GameSales.Items(items), ref matchedProductCount, ref __result);
 
     /// <returns>false when the mod answered (vanilla skipped); true to run vanilla.</returns>
+    /// <remarks>
+    /// Phase 08 (fail closed): a contract the mod holds a snapshot for is never judged by the game's exact-product rule.
+    /// When it cannot be validated right now (authority not confirmed, an exception) the delivery gets no match, which is
+    /// the same outcome as any refused category delivery; the contract stays open. See <see cref="ManagedHandoverGuard"/>.
+    /// </remarks>
     private static bool Match(Contract contract, System.Collections.Generic.List<ItemInstance?>? items, ref int matched, ref float result)
     {
+        var held = false;
+        string? id = null;
         try
         {
-            if (items is null || !GameSales.ManagedAny(contract, out var id))
+            held = GameSales.HeldAny(contract, out id);
+            if (!held)
             {
                 return true;
             }
 
-            var validation = GameSales.Validate(id!, items);
-            if (validation is null)
+            var validation = items is null ? null : GameSales.Validate(id!, items);
+            switch (ManagedHandoverGuard.Decide(held, validation))
             {
-                return true;
-            }
+                case HandoverHookAction.UseValidation:
+                    var match = GameSales.Match(contract, validation!, items!);
+                    result = match.Match;
+                    matched = match.MatchedUnits;
+                    return false;
+                case HandoverHookAction.Refuse:
+                    result = 0f;
+                    matched = 0;
+                    if (validation is null)
+                    {
+                        GameSales.Once("match-unchecked:" + id, $"Order {id}: delivery refused because the category order could not be checked right now (session authority not confirmed); the contract stays open.", warning: true);
+                    }
 
-            var match = validation.IsValid ? GameSales.Match(contract, validation, items) : default;
-            result = match.Match;
-            matched = match.MatchedUnits;
-            return false;
+                    return false;
+                default:
+                    return true;
+            }
         }
         catch (Exception ex)
         {
-            // Never approve on an error: the game's own exact-product check decides instead.
-            GameSales.Once("match-error:" + ex.GetType().Name, $"Category match failed; vanilla matching used for this delivery. {ex.GetType().Name}: {ex.Message}", warning: true);
+            if (ManagedHandoverGuard.OnError(held) == HandoverHookAction.Refuse)
+            {
+                result = 0f;
+                matched = 0;
+                GameSales.Once("match-error-refused:" + ex.GetType().Name, $"Category match failed; the delivery for order {id} was refused (never judged by the game's exact-product rule). {LogText.Describe(ex)}", warning: true);
+                return false;
+            }
+
+            GameSales.Once("match-error:" + ex.GetType().Name, $"Delivery match check failed for a contract Take It does not manage; vanilla matching used. {LogText.Describe(ex)}", warning: true);
             return true;
         }
     }
@@ -162,17 +188,25 @@ internal sealed class PlayerSalesPatches : IPatchModule
 
     private static void GetErrorPostfix(HandoverScreenContractMode __instance, ref string errorMessage, ref bool __result)
     {
+        var held = false;
         try
         {
             var contract = __instance.CurrentContract;
-            if (GameSales.Managed(contract, out var id) is null)
+            held = GameSales.HeldPlayerOrder(contract, out var id);
+            if (!held)
             {
                 return;
             }
 
             var items = __instance._mainScreen?.GetHandoverItems();
             var validation = GameSales.Validate(id!, GameSales.Items(items));
-            if (validation is { IsValid: false })
+            if (validation is null)
+            {
+                // Phase 08: held but not checkable right now: block the button instead of letting the game decide.
+                errorMessage = ManagedHandoverGuard.CannotCheckMessage;
+                __result = true;
+            }
+            else if (!validation.IsValid)
             {
                 errorMessage = validation.Message;
                 __result = true;
@@ -180,7 +214,13 @@ internal sealed class PlayerSalesPatches : IPatchModule
         }
         catch (Exception ex)
         {
-            GameSales.Once("gate-error", $"Handover gate failed; the game's own checks apply. {ex.GetType().Name}: {ex.Message}", warning: true);
+            if (held)
+            {
+                errorMessage = ManagedHandoverGuard.CannotCheckMessage;
+                __result = true;
+            }
+
+            GameSales.Once("gate-error", $"Handover gate failed; {(held ? "the delivery is blocked for this managed order" : "the game's own checks apply")}. {LogText.Describe(ex)}", warning: true);
         }
     }
 
@@ -201,7 +241,7 @@ internal sealed class PlayerSalesPatches : IPatchModule
         }
         catch (Exception ex)
         {
-            GameSales.Once("label-error", $"Could not show the category order on the handover screen. {ex.GetType().Name}: {ex.Message}", warning: true);
+            GameSales.Once("label-error", $"Could not show the category order on the handover screen. {LogText.Describe(ex)}", warning: true);
         }
     }
 
@@ -234,7 +274,7 @@ internal sealed class PlayerSalesPatches : IPatchModule
         }
         catch (Exception ex)
         {
-            GameSales.Once("commit-error", $"Could not record a processed handover. {ex.GetType().Name}: {ex.Message}", warning: true);
+            GameSales.Once("commit-error", $"Could not record a processed handover. {LogText.Describe(ex)}", warning: true);
         }
     }
 
@@ -283,7 +323,7 @@ internal sealed class PlayerSalesPatches : IPatchModule
         }
         catch (Exception ex)
         {
-            GameSales.Once("end-error", $"Could not observe the end of a contract. {ex.GetType().Name}: {ex.Message}", warning: true);
+            GameSales.Once("end-error", $"Could not observe the end of a contract. {LogText.Describe(ex)}", warning: true);
         }
     }
 }

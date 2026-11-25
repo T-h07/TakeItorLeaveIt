@@ -3,6 +3,7 @@ using Il2CppScheduleOne.Networking;
 using Il2CppScheduleOne.PlayerScripts;
 using Il2CppSteamworks;
 using TakeItOrLeaveIt.Core.Multiplayer;
+using TakeItOrLeaveIt.Core.Diagnostics;
 
 namespace TakeItOrLeaveIt.Game.Sales;
 
@@ -30,7 +31,7 @@ internal static class GameNetwork
         }
         catch (Exception ex)
         {
-            GameSales.Once("network-read", $"Could not read the network state; Take It stays vanilla. {ex.GetType().Name}: {ex.Message}", warning: true);
+            GameSales.Once("network-read", $"Could not read the network state; Take It stays vanilla. {LogText.Describe(ex)}", warning: true);
             reading.IsServer = null;
             reading.IsClient = null;
         }
@@ -112,7 +113,7 @@ internal sealed class SteamLobbyRulesChannel : IRulesChannel
         }
         catch (Exception ex)
         {
-            GameSales.Once("rules-publish", $"Sharing Take It rules with clients failed. {ex.GetType().Name}: {ex.Message}", warning: true);
+            GameSales.Once("rules-publish", $"Sharing Take It rules with clients failed. {LogText.Describe(ex)}", warning: true);
             return false;
         }
     }
@@ -136,7 +137,7 @@ internal sealed class SteamLobbyRulesChannel : IRulesChannel
         }
         catch (Exception ex)
         {
-            GameSales.Once("rules-read", $"Reading the host's Take It rules failed. {ex.GetType().Name}: {ex.Message}", warning: true);
+            GameSales.Once("rules-read", $"Reading the host's Take It rules failed. {LogText.Describe(ex)}", warning: true);
             return null;
         }
     }

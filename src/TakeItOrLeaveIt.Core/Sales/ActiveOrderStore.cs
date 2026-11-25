@@ -5,6 +5,7 @@ using System.Linq;
 using TakeItOrLeaveIt.Core.Persistence;
 using TakeItOrLeaveIt.Core.Policies;
 using TakeItOrLeaveIt.Core.Products;
+using TakeItOrLeaveIt.Core.Diagnostics;
 
 namespace TakeItOrLeaveIt.Core.Sales;
 
@@ -105,7 +106,7 @@ public sealed class ActiveOrderStore
         }
         catch (FormatException ex)
         {
-            return DocumentCheck.Unreadable(ex.Message);
+            return DocumentCheck.Unreadable(LogText.Clip(ex.Message, 200));
         }
 
         if (root is null)
@@ -169,7 +170,7 @@ public sealed class ActiveOrderStore
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FormatException or InvalidDataException)
         {
-            return new OrdersLoadResult(OrdersLoadStatus.Unreadable, none, new[] { $"Order file could not be read ({ex.GetType().Name}: {ex.Message})." });
+            return new OrdersLoadResult(OrdersLoadStatus.Unreadable, none, new[] { $"Order file could not be read ({LogText.Describe(ex)})." });
         }
     }
 
@@ -321,7 +322,7 @@ public sealed class ActiveOrderStore
             var id = body.TryGetValue("contract", out var c) ? c as string : null;
             if (!CategoryOrder.IsValidContractId(id) || !seen.Add(id!))
             {
-                issues.Add($"Order entry '{id}' has a missing, invalid or duplicate contract id; ignored.");
+                issues.Add($"Order entry '{LogText.Clip(id, 64)}' has a missing, invalid or duplicate contract id; ignored.");
                 continue;
             }
 
@@ -349,7 +350,21 @@ public sealed class ActiveOrderStore
             return null;
         }
 
-        var mixed = !body.TryGetValue("mixedDeliveries", out var m) || m is not bool mixedValue || mixedValue;
+        // Phase 08: an absent field (older file) keeps the historical default; a present but damaged value is made
+        // stricter (single-product deliveries), never looser.
+        var mixed = true;
+        if (body.TryGetValue("mixedDeliveries", out var m))
+        {
+            if (m is bool mixedValue)
+            {
+                mixed = mixedValue;
+            }
+            else
+            {
+                mixed = false;
+                issues.Add($"Order {id} has an unreadable mixed-delivery flag; mixed deliveries are refused for it.");
+            }
+        }
         var revision = body.TryGetValue("policyRevision", out var r) && r is double rev && rev >= 0 && rev <= long.MaxValue ? (long)rev : 0;
         var requested = Keys(body, "requestedProducts");
 

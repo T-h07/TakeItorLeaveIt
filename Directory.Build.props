@@ -13,6 +13,9 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AnalysisLevel>latest</AnalysisLevel>
     <Deterministic>true</Deterministic>
+    <!-- Phase 08: shipped binaries must not carry build-machine paths (they contain the developer's user name).
+         The PDB path in the debug directory and any source paths become /_/... -->
+    <PathMap>$(MSBuildThisFileDirectory)=/_/</PathMap>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- CS1591: missing XML docs on public members. Docs are encouraged, not mandatory. -->
     <NoWarn>$(NoWarn);CS1591</NoWarn>
@@ -20,8 +23,8 @@
     <Authors>T-h07</Authors>
     <Product>TakeItOrLeaveIt</Product>
     <!-- Single source of truth for the mod version. ModInfo.Version must match (checked by a unit test). -->
-    <Version>0.0.1</Version>
-    <InformationalVersion>0.0.1-dev</InformationalVersion>
+    <Version>1.0.0</Version>
+    <InformationalVersion>1.0.0</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 </Project>

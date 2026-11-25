@@ -41,6 +41,14 @@ public sealed class DealerSalesStatus
 
     public string? LastError { get; set; }
 
+    /// <summary>Phase 08: removed items waiting to go back to their dealer after a failed rollback.</summary>
+    public int PendingReturnItems { get; set; }
+
+    public long PendingReturnUnits { get; set; }
+
+    /// <summary>Phase 08: items given up on after repeated failed returns (each logged as an error).</summary>
+    public int AbandonedReturns { get; set; }
+
     public bool HooksActive => AppointmentHook == ComponentStatus.Active && FulfilmentHook == ComponentStatus.Active &&
                                ReconcileHook == ComponentStatus.Active;
 
@@ -68,6 +76,11 @@ public sealed class DealerSalesStatus
             $"Stock reservations: {Reservations} ({ReservedUnits} unit(s))",
             $"Last dealer error: {LastError ?? "none"}",
         };
+        if (PendingReturnItems > 0 || AbandonedReturns > 0)
+        {
+            lines.Add($"Items waiting to go back to dealers: {PendingReturnItems} ({PendingReturnUnits} unit(s)); given up: {AbandonedReturns}");
+        }
+
         if (HooksUnavailableReason is not null)
         {
             lines.Add($"Dealer hooks: {HooksUnavailableReason}");

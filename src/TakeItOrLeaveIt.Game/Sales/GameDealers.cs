@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using Il2CppScheduleOne.Economy;
+using Il2CppScheduleOne.ItemFramework;
 using Il2CppScheduleOne.Product;
 using TakeItOrLeaveIt.Core.Dealers;
 using TakeItOrLeaveIt.Core.Inventory;
@@ -29,6 +30,12 @@ internal static class GameDealers
     private static readonly Dictionary<string, double> NextNotify = new(StringComparer.Ordinal);
 
     public static DealerSaleCoordinator? Coordinator { get; set; }
+
+    /// <summary>
+    /// Phase 08: items a short or mismatched removal took from a dealer that could not be given back at once. Retried
+    /// from the same dealer's tick; never handed to a customer.
+    /// </summary>
+    public static PendingReturnQueue<ItemInstance> PendingReturns { get; } = new();
 
     /// <summary>Restock messages (null when not wired). Checked from the dealer's tick, throttled in Core.</summary>
     public static DealerRestockNotificationCoordinator? Notifier { get; set; }
@@ -210,6 +217,49 @@ internal static class GameDealers
         DealerIds.Clear();
         NextReconcile.Clear();
         NextNotify.Clear();
+        var dropped = PendingReturns.Count;
+        var units = PendingReturns.Units;
+        if (PendingReturns.Clear() > 0)
+        {
+            GameSales.Log?.Error($"Save session changed with {dropped} removed item(s) ({units} unit(s)) still waiting to go back to their dealer; they belong to the previous game state and are dropped.");
+        }
+    }
+
+    /// <summary>
+    /// Phase 08: forgets the pointer-keyed dealer id cache. Called on every scene load: a native address is only an
+    /// identity while the object is alive, and a scene change can free and reuse it.
+    /// </summary>
+    public static void ForgetPointers() => DealerIds.Clear();
+
+    /// <summary>Phase 08: retries giving queued items back to this dealer (cheap when nothing is queued).</summary>
+    public static void RetryReturns(Dealer dealer)
+    {
+        if (PendingReturns.Count == 0)
+        {
+            return;
+        }
+
+        var id = DealerId(dealer);
+        if (!PendingReturns.HasPending(id))
+        {
+            return;
+        }
+
+        var pass = PendingReturns.Retry(id, item =>
+        {
+            dealer.AddItemToInventory(item);
+            return true;
+        });
+        if (pass.Returned > 0)
+        {
+            GameSales.Log?.Info($"Dealer {id}: {pass.Returned} removed item stack(s) given back after an earlier failure; {pass.StillPending} still waiting.");
+            GameSales.InvalidateCache();
+        }
+
+        if (pass.Abandoned > 0)
+        {
+            GameSales.Log?.Error($"Dealer {id}: {pass.Abandoned} removed item stack(s) ({pass.AbandonedUnits} unit(s)) could not be given back after {PendingReturnQueue<ItemInstance>.MaxAttempts} attempts and are lost. Please report this with the log.");
+        }
     }
 
     private static string? Token(string? raw)

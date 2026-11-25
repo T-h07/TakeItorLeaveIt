@@ -101,7 +101,7 @@ public sealed class ProductCatalogService
         catch (Exception ex)
         {
             _log?.Error("Product discovery threw an exception.", ex);
-            result = DiscoveryResult.Failure($"Discovery threw {ex.GetType().Name}: {ex.Message}");
+            result = DiscoveryResult.Failure($"Discovery threw {LogText.Describe(ex)}");
         }
 
         return Publish(session, result);

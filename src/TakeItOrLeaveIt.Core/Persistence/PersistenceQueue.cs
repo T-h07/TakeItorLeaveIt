@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using TakeItOrLeaveIt.Core.Diagnostics;
 
 namespace TakeItOrLeaveIt.Core.Persistence;
 
@@ -208,16 +209,16 @@ public sealed class PersistenceQueue
                     else
                     {
                         Interlocked.Increment(ref _failures);
-                        _lastError = $"{entry.Key}: {error.GetType().Name}: {error.Message}";
+                        _lastError = $"{entry.Key}: {LogText.Describe(error)}";
                         if (stillCurrent)
                         {
                             entry.Attempts++;
                             entry.DueAt = _clock() + BackoffSeconds[Math.Min(entry.Attempts, BackoffSeconds.Length) - 1];
-                            Report($"Could not write {entry.Key} (attempt {entry.Attempts}; kept in memory and retried): {error.GetType().Name}: {error.Message}");
+                            Report($"Could not write {entry.Key} (attempt {entry.Attempts}; kept in memory and retried): {LogText.Describe(error)}");
                         }
                         else
                         {
-                            Report($"Could not write {entry.Key} ({error.GetType().Name}: {error.Message}); a newer version is queued.");
+                            Report($"Could not write {entry.Key} ({LogText.Describe(error)}); a newer version is queued.");
                         }
                     }
                 }

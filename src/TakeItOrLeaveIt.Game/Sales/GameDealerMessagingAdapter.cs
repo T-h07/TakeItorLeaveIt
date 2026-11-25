@@ -3,6 +3,7 @@ using System.Reflection;
 using Il2CppScheduleOne.Economy;
 using Il2CppScheduleOne.Messaging;
 using Il2CppScheduleOne.NPCs;
+using TakeItOrLeaveIt.Core.Diagnostics;
 
 namespace TakeItOrLeaveIt.Game.Sales;
 
@@ -70,7 +71,7 @@ internal static class GameDealerMessagingAdapter
         }
         catch (Exception ex)
         {
-            failure = $"{ex.GetType().Name}: {ex.Message}";
+            failure = $"{LogText.Describe(ex)}";
             return false;
         }
     }

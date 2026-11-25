@@ -66,7 +66,7 @@ public sealed class StartupSequence
             catch (UnsupportedEnvironmentException ex)
             {
                 FailedStep = step.Key;
-                _log.Error($"Unsupported environment during '{step.Key}': {ex.Message} Gameplay features stay disabled.");
+                _log.Error($"Unsupported environment during '{step.Key}': {LogText.Clip(LogText.RedactPaths(ex.Message), 300)} Gameplay features stay disabled.");
                 return StartupOutcome.UnsupportedEnvironment;
             }
             catch (Exception ex)
