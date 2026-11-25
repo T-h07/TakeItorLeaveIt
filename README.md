@@ -11,7 +11,7 @@ Use the **reference-enabled IL2CPP release ZIP** from [GitHub Releases](https://
 **Requirements:** Schedule I v0.4.7f12 IL2CPP (Steam default branch), Windows, [MelonLoader](https://github.com/LavaGang/MelonLoader/releases) 0.7.3 (recommended), and S1API Forked 3.2.3 for the in-game phone menu. Install the external prerequisites according to their own instructions. The mod ZIP does not bundle those dependencies.
 
 1. **Close the game** and back up your Schedule I save plus `UserData/TakeItOrLeaveIt/` (if present).
-2. Extract the release ZIP **into the game's root folder**. It should place `TakeItOrLeaveIt.Il2Cpp.dll` in `Mods/` and `TakeItOrLeaveIt.Core.dll` in `UserLibs/`.
+2. Extract the release ZIP **into the game's root folder**. It should place `TakeItOrLeaveIt.Il2Cpp.dll` in `Mods/` and `TakeItOrLeaveIt.Core.dll` in `UserLibs/` (plus the `LICENSE` text, which the game ignores).
 3. Remove any outdated duplicate TakeItOrLeaveIt mod DLL from `Mods/`; do not install the Mono and IL2CPP variants together.
 4. Launch Schedule I, load a save, open the phone, and choose **Take It**.
 5. Select products and rules, then press **Save**. Changes are saved per game save, without editing vanilla save files.

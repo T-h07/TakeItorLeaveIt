@@ -22,6 +22,7 @@ Download the **reference-enabled IL2CPP** ZIP from these release assets (not the
 ```text
 Mods/TakeItOrLeaveIt.Il2Cpp.dll
 UserLibs/TakeItOrLeaveIt.Core.dll
+LICENSE
 ```
 
 Install MelonLoader/S1API separately. Launch the game, open the in-game phone, select **Take It**, configure products and press **Save**. Full guide: [INSTALLATION.md](https://github.com/T-h07/TakeItorLeaveIt/blob/v1.0.0/docs/INSTALLATION.md).
@@ -35,11 +36,18 @@ Install MelonLoader/S1API separately. Launch the game, open the in-game phone, s
 
 ## Verification
 
-- Last reported pre-release automated CI baseline: **805 passed**, no failures/skips.
-- Owner reported RC2 working in-game. Detailed scenario-by-scenario results are not on record.
-- **Before publishing this release**, attach the final **1.0.0** IL2CPP ZIP built from the tagged source, verify that it includes game hooks and S1API app, test the exact final ZIP and record its SHA256 below.
+- Automated: **805 passed**, 0 failed, 0 skipped; clean Release build with the Schedule I v0.4.7f12 references and S1API 3.2.3, 0 warnings, 0 errors. The build includes the S1API phone app and the player sales, dealer sales and customer offer hooks.
+- In game: the owner reported RC2 working and then smoke-tested **this exact ZIP** on 2026-11-25: the mod initialized as `1.0.0`, the Take It phone app opened, a rule change was saved, a normal player sale and a dealer sale completed, and the log showed no new critical errors. The full historical scenario table is not individually marked PASS.
+- The DLLs contain no developer paths and report version `1.0.0`; the ZIP holds only the files listed above.
 
-**Final ZIP:** PENDING FINAL BUILD  
-**SHA256:** PENDING FINAL BUILD
+**Final ZIP:** `TakeItOrLeaveIt-v1.0.0-Il2Cpp.zip` (185,826 bytes)  
+**SHA256:** `A0D56D8772917F81ED73057CBE44ADF2D78804F71B5DD2D905316600E2D7E89D`
+
+| File in the ZIP | SHA256 |
+| --- | --- |
+| `Mods/TakeItOrLeaveIt.Il2Cpp.dll` (130,048 bytes) | `9F95C63910CFCED069590CF8A7532CEE4BBE07D4BFB25AC5FC422D23DAEB71CE` |
+| `UserLibs/TakeItOrLeaveIt.Core.dll` (309,248 bytes) | `A640E9A5E738609672C37E68B791E5A622AFB94B627B3B2022427332A0C2DA1B` |
+
+The same hashes are in the attached `TakeItOrLeaveIt-v1.0.0-SHA256.txt`.
 
 MIT © 2026 Taulant Haxhiu. This license covers only the mod's own source.

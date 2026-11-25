@@ -14,12 +14,14 @@
 1. Quit the game. Back up your Schedule I saves and `<game>/UserData/TakeItOrLeaveIt/` if it exists.
 2. Install MelonLoader via its [official releases](https://github.com/LavaGang/MelonLoader/releases); launch once and close to generate IL2CPP interop files.
 3. Install S1API Forked 3.2.3 using its own official instructions.
-4. Download the reference-enabled IL2CPP ZIP from the [GitHub Release assets](https://github.com/T-h07/TakeItorLeaveIt/releases) **after it is attached to the release**.
+4. Download `TakeItOrLeaveIt-v1.0.0-Il2Cpp.zip` from the [v1.0.0 GitHub Release](https://github.com/T-h07/TakeItorLeaveIt/releases/tag/v1.0.0). Its SHA256 is listed in the release notes and in `TakeItOrLeaveIt-v1.0.0-SHA256.txt`.
 5. Extract the ZIP into the game root, preserving:
    ```text
    Mods/TakeItOrLeaveIt.Il2Cpp.dll
    UserLibs/TakeItOrLeaveIt.Core.dll
+   LICENSE
    ```
+   `LICENSE` is the mod's MIT license text; the game ignores it, so you can keep or delete it.
 6. Ensure no old `TakeItOrLeaveIt.Mono.dll` or duplicate `TakeItOrLeaveIt.Il2Cpp.dll` is in `Mods/`.
 7. Launch Schedule I and load a save. Open the phone and tap **Take It**.
 8. In `MelonLoader/Latest.log`, look for successful mod initialization, compatible game build, the *Player sales*, *Dealer sales* and *Customer offers* patch modules, and the S1API phone-app message. The tested reference-enabled integration has **13 patched methods across 3 modules**.

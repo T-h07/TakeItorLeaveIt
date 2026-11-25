@@ -2,11 +2,11 @@
 
 **Supported release target:** Windows, Schedule I **v0.4.7f12 IL2CPP**, single-player, with MelonLoader 0.7.3 and S1API Forked 3.2.3 for the phone menu.
 
-The owner reported the Phase 08 RC2 build working in-game. This does **not** mean that every historical acceptance case or supported-matrix combination was individually exercised. Only the baseline loading (Phase 00) has earlier detailed logged physical verification; the remainder of the original acceptance tracker is still awaiting scenario-specific reports.
+The owner reported the Phase 08 RC2 build working in-game and smoke-tested the final v1.0.0 ZIP before publication. This does **not** mean that every historical acceptance case or supported-matrix combination was individually exercised. Only the baseline loading (Phase 00) has earlier detailed logged physical verification; the remainder of the original acceptance tracker is still awaiting scenario-specific reports.
 
 | Component or arrangement | Evidence / claim |
 | --- | --- |
-| Schedule I v0.4.7f12, IL2CPP, Windows — single-player | Targeted build, compiled with local references; owner reports the mod works in-game |
+| Schedule I v0.4.7f12, IL2CPP, Windows — single-player | Targeted build, compiled with local references; owner reports the mod works in-game; final v1.0.0 ZIP smoke-tested |
 | MelonLoader 0.7.3 | Recommended; build verified and Phase 00 loading verified |
 | S1API Forked 3.2.3 | Required for the seven-screen Take It phone app; compiled against |
 | Other Schedule I versions | Not tested or guaranteed; game changes may invalidate hooks |
