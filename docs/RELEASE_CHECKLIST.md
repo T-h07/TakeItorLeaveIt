@@ -18,7 +18,7 @@
 - [x] Build logs confirm **WITH S1API phone app** and **WITH player/dealer game hooks**; the DLL references S1API and contains the phone app and all three patch classes.
 - [x] Final archive contains only `Mods/TakeItOrLeaveIt.Il2Cpp.dll`, `UserLibs/TakeItOrLeaveIt.Core.dll` and `LICENSE`.
 - [x] Check all binaries for absolute developer paths and unintended proprietary assemblies.
-- [x] Record source commit, file sizes and SHA256 checksums; ZIP must be rebuilt after any version/code change. ZIP SHA256 `A0D56D8772917F81ED73057CBE44ADF2D78804F71B5DD2D905316600E2D7E89D`; DLLs built from `c4c1e0c` and rebuilt byte-identical from the tagged commit (this commit changes documentation only).
+- [x] Record source commit, file sizes and SHA256 checksums; ZIP must be rebuilt after any version/code change. ZIP SHA256 `A0D56D8772917F81ED73057CBE44ADF2D78804F71B5DD2D905316600E2D7E89D`; The shipped, smoke-tested DLLs were built from `c4c1e0c`; the tagged commit changes documentation only. Rebuilding from the tagged commit gives the same code: the DLLs differ only in the Git commit ID embedded for source links and the IDs derived from it, and with source links disabled both commits build byte-identical DLLs.
 - [x] Extract and install the **exact final v1.0.0 ZIP** and smoke-test it (owner, 2026-11-25: the mod initialized as `1.0.0`, the Take It phone app opened, a rule change was saved, a normal player sale and a dealer sale completed, and the log showed no new critical errors).
 - [x] Do not substitute the `CI-no-game-hooks` archive or rename RC2 as v1.0.0.
 
